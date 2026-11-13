@@ -39,6 +39,12 @@ never new permissions. **[approved: "roles"; assumed: kept apart from plans]**
 - **Moderation:** the admin can reset someone's display name or username (if
   offensive or impersonating) and disable an account. Neither shows the admin
   any personal routes. **[assumed]**
+- **Demoted pacer** (pacer → runner): their public uploads stay, still credited
+  to them, but only the admin can edit them from then on. Reports on those
+  routes go to the admin's complaint box. Their personal library is unchanged. **[approved]**
+- **Disabled account:** can't sign in. Its personal routes are kept but shown to
+  no one, the admin included. The admin can re-enable the account, or delete
+  it, which deletes those routes (as in §5 "Account deletion"). **[approved]**
 
 ## 2. Public library
 
@@ -48,7 +54,7 @@ never new permissions. **[approved: "roles"; assumed: kept apart from plans]**
 |---|---|---|---|
 | **Admin** | **Admin only. No one else, ever.** | Pacers, runners | Admin's complaint box |
 | **A pacer** | That pacer and the admin | Other pacers, runners | The pacer's inbox **and** the admin's |
-| **A former pacer** (account deleted) | Admin | Pacers, runners | Admin's complaint box |
+| **A former pacer** (account deleted or demoted) | Admin | Pacers, runners | Admin's complaint box |
 
 [approved: admin routes locked, pacers on other routes report only, pacers fix their own uploads, runners can report]
 
@@ -59,11 +65,25 @@ never new permissions. **[approved: "roles"; assumed: kept apart from plans]**
   owner (or the admin) checks it. A report never counts as a review. The existing
   rule still applies: changing a reviewed route's turns or start street resets it
   to unverified. **[assumed, follows the existing route rules]**
+  - *Desk-reviewed:* every turn checked against the map in the upload/check screens.
+  - *Field-verified:* the owner (or admin) ticks "I ran this route and the turns
+    were right" with the date it was run. There is no GPS evidence, by design.
+    Shown as "field-verified by Sam (@sam_runs), 2026-11-15". **[approved]**
 - **Change log:** every edit to a public route records who, when, and before/after,
   visible to the admin and to the route's owner. Admin edits to a pacer's route
   show in that pacer's log. **[assumed]**
-- **Built-in routes** move into the public library, owned by the admin. Their
-  build-time copies stay in the app as the offline fallback. **[approved]**
+- **The database is the only source of truth for public routes.** **[approved]**
+  - The built-in routes move into the public library, owned by the admin, keeping
+    their IDs (e.g. `pi-day`) so existing `?route=` links work.
+  - The repo's route files (`src/data/routes/`, `routes/`) are **frozen** after the
+    move: no more edits there, no more `npm run routes` for them. They ship only
+    as the first-launch offline fallback, before the app has fetched the list.
+  - Once the app has fetched the public list, it uses that (and its saved copy
+    offline) instead of the built-in files, even where they differ.
+  - The Sunday dashboard picks its route by ID from the public library
+    (`event.json` keeps the ID) instead of reading `manifest.json`.
+  - The dev route editor (`?edit`) and `npm run routes` stay for development and
+    tests, not for publishing.
 - **Attribution:** public routes show the uploader's display name and username
   ("by Sam (@sam_runs)", "reviewed by Sam (@sam_runs)"), never the email.
   Display names can repeat, so the username tells two Sams apart (§5). When an account is deleted its public
@@ -80,6 +100,10 @@ never new permissions. **[approved: "roles"; assumed: kept apart from plans]**
   be right, not left". **[approved]**
 - Reports close when the owner fixes the turn or dismisses them. The admin sees
   every report and can act on any of them. **[assumed]**
+- **Notifications are in-app only.** Auth0's built-in email sends only its own
+  messages (verification, reset), so the app can't email anyone. Pacers see new
+  reports, and the admin sees new reports and new public uploads, as a count
+  badge when they open the app. **[approved]**
 - Suggesting a personal route for the public library (runners) is **later**. **[approved]**
 
 ## 3. Personal library
@@ -99,17 +123,53 @@ never new permissions. **[approved: "roles"; assumed: kept apart from plans]**
 
 ## 4. Upload and check flow
 
-Same steps and rules as the dev route editor, moved behind an API. **[approved: "just .gpx then verify like our dev workflow"]**
+Same steps and rules as the dev route editor, running in the app. **[approved: "just .gpx then verify like our dev workflow"]**
 
-1. Upload a `.gpx` (phone or laptop).
-2. The server cleans it with `scripts/lib/sanitize-gpx.ts` (lat/lon/ele only) and
-   discards the original immediately.
-3. The server builds the route with `process-route.ts`, `turns.ts`, elevation
-   (GeoGratis) and street names (Overpass), and stores a **draft** that expires
-   after 24 hours.
+1. Choose a `.gpx` (phone or laptop).
+2. **On the device**, the app cleans it with `scripts/lib/sanitize-gpx.ts`
+   (lat/lon/ele only). **The original GPX never leaves the device.**
+3. **On the device**, the app builds the route with `process-route.ts` and
+   `turns.ts`; elevation (GeoGratis) and street names (Overpass) come through
+   our lookup Functions (below). The unsaved route is a **draft kept on the
+   device** (IndexedDB) until saved or discarded.
 4. The person checks turns on the map (the route editor's screens and rules:
    `edits.ts`, `turnEdit.ts`, `review.ts`) and fills in name, place, tags, notes.
-5. Save → personal library, or (pacers, admin) publish → public library as unverified.
+5. Save → personal library, or (pacers, admin) publish → public library as
+   unverified. Only now does anything reach the server: the cleaned GPX and the
+   built route.
+
+**Where routes can be** **[approved]**:
+- **Public routes must lie inside the Québec map area** (§4a). Publishing is
+  refused otherwise.
+- **Personal routes can be anywhere**, with a warning when they leave the map
+  area ("no offline map here") or Canada ("no elevation here": CDEM covers
+  Canada only).
+
+### 4a. Offline maps per route **[approved: own Québec map on R2]**
+
+Replaces the single precached `public/maps/montreal.pmtiles`, which only covers
+the current library routes plus 1.1 km (the whole island would be ~55 MB).
+
+- **One Québec map on R2.** `scripts/cut-map.ts` cuts a larger area from the
+  Protomaps planet build (same data, same `mapStyle.ts`) and it's uploaded to R2.
+  Area: the whole province if the file stays under ~5 GB, otherwise southern
+  Québec. **[assumed: size checked when cutting]** R2's free plan holds 10 GB.
+- **Each route downloads its own area**, never the person's location: the route
+  plus 1.1 km (the same margin `cut-map.ts` uses), zooms 10–15, saved in Cache
+  Storage when the route is saved or opened online. The route shows "Map saved
+  for offline ✓". Nothing about the download depends on GPS. **[approved]**
+- **Served by a Function**, `GET /api/map/tiles/:z/:x/:y`, reading the R2 file
+  with range requests (the PMTiles library runs on Workers) and caching tiles at
+  Cloudflare's edge. Open to visitors (public routes need maps too),
+  rate-limited. It never logs tile coordinates, because for a personal route they
+  outline where that route is. **[assumed]**
+- **Clean-up:** a personal route's tiles are removed with the route and on sign-out. **[assumed]**
+- **Updates:** re-cut and re-upload about once a season; bump `MAP_VERSION` so
+  saved routes refresh their tiles next time they're opened online. **[assumed]**
+- **App install gets lighter:** `montreal.pmtiles` (13 MB) is no longer
+  precached by the service worker. Before the first fetch, the frozen built-in
+  routes show without a map until the app has been online once. **[assumed]**
+- **Size per route:** to be measured on a real route during step 2; expected a few MB.
 
 - Before saving, the page reminds people that a GPX usually starts at home and
   offers to trim the first and last few hundred metres. For public uploads the
@@ -128,7 +188,8 @@ Same steps and rules as the dev route editor, moved behind an API. **[approved: 
     person's phone. Each call is one outside request and very little CPU.
     Signed-in only, rate-limited, no storage.
   - The server stores the result after cheap checks: schema, field rules, sizes,
-    distance and point count within limits, track and route agreeing. That's
+    distance and point count within limits, track and route agreeing, cleaned
+    GPX containing only lat/lon/ele, and (public) inside the map area. That's
     safe because a person can only harm their own personal library this way, and
     public uploads come from pacers you promoted.
 - `turn-review.ts` uses `node:crypto`; switch it to Web Crypto so it runs in the
@@ -152,6 +213,9 @@ Same steps and rules as the dev route editor, moved behind an API. **[approved: 
   Beta gets its own second tenant (any region).
 - **Sign-up:** email + password (Auth0 stores and hashes passwords), then a
   username and a display name in the app. **[approved]**
+- **Accounts are 14+ only.** Under Law 25 a child under 14 needs a parent's
+  consent. Sign-up asks the person to confirm they are 14 or older (no birth date
+  stored). The app without an account stays open to everyone. **[approved]**
 - **Onboarding:** the first time an Auth0 account reaches the app, it must pick a
   username and display name and see its recovery code before anything else. An
   Auth0 account that never finishes this has no row in D1 and can't do anything. **[assumed]**
@@ -264,9 +328,9 @@ phone / laptop (PWA)
 Cloudflare Pages ── static app (as today)
   └─ functions/api/*  (Pages Functions)
         ├─ D1  : users, sessions, routes, reports, change log
-        ├─ R2  : cleaned GPX + track GeoJSON
+        ├─ R2  : cleaned GPX + track GeoJSON, Québec map (PMTiles)
         ├─ Auth0 (sign-in, passkeys, emails, management API)
-        └─ GeoGratis + Overpass (only while building an upload)
+        └─ GeoGratis + Overpass (lookups for a route being built on the device)
 ```
 
 - **Pages Functions** in this repo (`functions/api/`), same domain as the app: no
@@ -279,20 +343,20 @@ Cloudflare Pages ── static app (as today)
   only in its own tenant. **[assumed]**
 - **Local development:** Functions, D1 and R2 run locally with `wrangler pages dev`
   in front of Vite (local D1/R2, no real data). The dev route editor (`?edit`)
-  stays as it is for repo routes. **[assumed]**
-- **Offline:** the library shows the last-known public list (with "from <time>")
-  plus build-time routes; opened routes are cached in Cache Storage like the
-  offline map. **[assumed]**
+  stays for development and tests (§2). **[assumed]**
+- **Offline:** the library shows the last-known public list (with "from <time>");
+  before the first fetch it falls back to the frozen built-in routes (§2).
+  Opened routes are cached in Cache Storage like the offline map. **[assumed]**
 - Free-plan headroom at this scale: D1 5 GB, R2 10 GB, 100,000 Function requests a day. Measured route sizes: cleaned GPX 8–22 KB, built route + track 5–8 KB.
-- **Built-in route IDs** (e.g. `pi-day`) stay their IDs in the database, so
-  existing `?route=` links keep working. New routes get random IDs.
 - **Advisories:** `src/data/advisories.json` stays hand-edited by pull request.
   Advisories stored on a route are edited by whoever can edit that route.
 
 ## 7. Data model (D1)
 
 Personal and public routes live in **separate tables**, so a forgotten filter
-can't leak a personal route into the public list. IDs are random, never 1, 2, 3. **[assumed]**
+can't leak a personal route into the public list. IDs are random, never 1, 2, 3,
+except the migrated built-in routes, which keep theirs (§2). **[assumed]**
+Unsaved drafts live on the device (§4), so there is no drafts table.
 
 | Table | Columns (main ones) |
 |---|---|
@@ -300,9 +364,8 @@ can't leak a personal route into the public list. IDs are random, never 1, 2, 3.
 | `released_usernames` | `username`, `released_at` (blocks reuse for 30 days) |
 | `sessions` | `token_hash`, `user_id`, `created_at`, `expires_at`, `last_used_at`, `device_label` |
 | `recovery` | `user_id`, `code_hash`, `created_at`; attempts in `recovery_attempts` (`user_id`, `at`), pruned after a day |
-| `public_routes` | `id`, `owner_id` (nullable = former pacer), `owner_is_admin`, `status` (`live`/`withdrawn`), route fields (name, place, description, tags, notes, start street, turns, advisories, verification, geometry, stats), `track_key`, `gpx_key`, timestamps |
+| `public_routes` | `id`, `owner_id` (nullable = former pacer), `owner_is_admin`, `owner_can_edit` (false once demoted), `status` (`live`/`withdrawn`), `withdrawn_at`, route fields (name, place, description, tags, notes, start street, turns, advisories, verification, geometry, stats), `track_key`, `gpx_key`, timestamps |
 | `personal_routes` | `id`, `owner_id` **NOT NULL**, the same route fields, `track_key`, `gpx_key`, timestamps |
-| `drafts` | `id`, `owner_id`, `target` (`public`/`personal`), built route, `expires_at` |
 | `reports` | `id`, `route_id`, `reporter_id` (nullable after deletion), `turn_index`, `kind`, `message`, `status`, `resolved_by`, timestamps |
 | `route_changes` | `id`, `route_id`, `actor_id`, `at`, `summary`, `before`, `after` |
 
@@ -323,10 +386,12 @@ All under `/api`. Writes need a session; the role checks are in §1–§2. **[as
 | `POST /public/routes/:id/review` | owner, admin |
 | `POST /public/routes/:id/reports` | signed in |
 | `GET /reports`, `PATCH /reports/:id` | route owner (their routes), admin (all) |
-| `GET/POST /me/routes`, `GET/PATCH/DELETE /me/routes/:id` | signed in, own routes only |
-| `POST /uploads`, `GET/PUT /uploads/:id`, `POST /uploads/:id/save` | signed in; `target: public` needs pacer/admin |
+| `GET/POST /me/routes`, `GET/PATCH/DELETE /me/routes/:id` | signed in, own routes only (POST = save a route built on the device) |
+| `POST /public/routes` | pacer, admin (publish a route built on the device) |
+| `GET /me/notifications` (badge counts) | signed in |
 | `GET/PATCH/DELETE /me`, `GET /me/sessions`, `DELETE /me/sessions/:id` | signed in |
 | `GET /usernames/:name` (available?) | anyone, rate-limited |
+| `GET /map/tiles/:z/:x/:y` | anyone, rate-limited, never logged (§4a) |
 | `POST /lookup/elevation`, `POST /lookup/streets` | signed in, rate-limited (§4) |
 | `GET /admin/users?username=…`, `PATCH /admin/users/:id` (role, reset names, disable) | admin |
 
@@ -355,11 +420,12 @@ Kept in one settings file. **[assumed]**
 
 | | Personal routes | Public uploads | Per upload |
 |---|---|---|---|
-| Runner | 25 | – | GPX ≤ 5 MB before cleaning, route ≤ 50 km |
+| Runner | 25 | – | GPX ≤ 5 MB on the device before cleaning; cleaned GPX ≤ 1 MB at the server; route ≤ 50 km |
 | Pacer | 50 | 5 per day | same |
 | Admin | No limit | No limit | – |
 
-Reports: 20 per account per day. Drafts expire after 24 hours.
+Reports: 20 per account per day. Lookups: enough for a few builds a day
+(e.g. 200 elevation batches per account per day).
 
 ## 11. Privacy and Law 25
 
@@ -370,6 +436,19 @@ Reports: 20 per account per day. Drafts expire after 24 hours.
   named as the person responsible for personal information, account deletion (§5),
   a breach plan and register, and a short privacy assessment for data stored
   outside Québec. **[assumed]**
+- **Privacy contact:** a separate free email address used only for the app,
+  published in the privacy policy, not Shereen's personal address. **[approved]**
+- **Documents before launch:** a short privacy policy and terms of use (upload
+  rights, public routes staying as "former pacer", 14+, no recovery without the
+  code). Claude drafts both; Shereen reviews. **[approved]**
+- **How long data is kept** **[approved]**:
+  - resolved or dismissed reports: deleted after 1 year
+  - change log entries: deleted after 2 years
+  - expired or signed-out sessions: deleted at once
+  - withdrawn public routes: deleted after 1 year unless the admin restores them
+  - recovery attempts: deleted after a day
+  - accounts and personal routes: until the person deletes them
+  - A daily scheduled Function (Cron Trigger, free) does the deleting.
 - That assessment is needed **even if Auth0 is in Canada**: Cloudflare's D1 and
   R2 can't be pinned to Canada (D1 takes a region hint such as "eastern North
   America"; R2 only offers EU and FedRAMP jurisdictions). One short document
@@ -388,7 +467,7 @@ Reports: 20 per account per day. Drafts expire after 24 hours.
     they're offered as a separate step, and keep a copy with the assessment.
 - The README and CLAUDE.md promises change: "no backend, accounts" becomes
   "optional accounts", and the outside-requests rule adds our own `/api`, Auth0,
-  and (server-side, during uploads) GeoGratis and Overpass.
+  and (through our server, while building a route) GeoGratis and Overpass.
 
 ## 12. Build order
 
@@ -402,11 +481,16 @@ Reports: 20 per account per day. Drafts expire after 24 hours.
      the fallback (sign-in from our own screen via Auth0's API) changes §5.
 1. Accounts: sign-up, sign-in, sessions, recovery code, display name, delete account.
 2. Personal library: upload → check turns → save → follow, offline cache.
-3. Public library from the database: migrate built-in routes, pacer uploads, edit
+   Cut the Québec map, check its size, upload to R2, and switch routes to
+   per-route map downloads (§4a).
+3. Public library from the database: migrate built-in routes, switch the library
+   and Sunday dashboard to it, freeze the repo route files, pacer uploads, edit
    and withdraw, change log, admin withdraw/restore/delete.
-4. Reports and complaint box.
-5. Admin: promote/demote pacers.
-6. Later: suggest a personal route for the public library; build routes on a map.
+4. Reports, complaint box and in-app notification badges.
+5. Admin: promote/demote pacers, moderation, disable accounts.
+6. Before launch: privacy email address, privacy policy, terms of use, privacy
+   assessment, retention clean-up job.
+7. Later: suggest a personal route for the public library; build routes on a map.
 
 ## 13. Open questions
 
@@ -415,4 +499,9 @@ Reports: 20 per account per day. Drafts expire after 24 hours.
 
 Settled 2026-11-12: Google left out of V1; 3 recovery attempts a day; runners can
 report; display names repeat, usernames are unique; live Auth0 tenant stays in
-the US; routes are built in the browser.
+the US; routes are built in the browser; the database is the only source of
+public routes; public routes stay inside the Québec map area; each route
+downloads its own offline map from our Québec map on R2; accounts are 14+;
+a separate privacy email and drafted policy/terms; in-app notifications only;
+demoted pacers lose editing; disabled accounts keep hidden routes; field-verified
+is a dated tick by the owner; retention periods in §11.
