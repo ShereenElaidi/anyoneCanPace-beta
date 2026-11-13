@@ -15,6 +15,7 @@ import { buildDraft, TRIM_CHOICES, uploadBody, type BuildStep, type Draft } from
 import { draftStore } from './drafts';
 import { insideMapArea, ROUTE_MAPS } from '../sixk/map/routeTiles';
 import '../dev/routeEditor/editor.css';
+import '../account/account.css';
 
 interface Props {
   /** An unsaved route to carry on with. */

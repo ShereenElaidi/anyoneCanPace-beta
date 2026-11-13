@@ -63,6 +63,23 @@ describe('My routes in the Route Library', () => {
     expect(screen.getByRole('button', { name: /START ROUTE/ })).toBeTruthy();
   });
 
+  it('adds a route from My routes when signed in and online, not when offline', async () => {
+    render(<SixKMode onSwitchMode={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'My routes (1)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'ADD A ROUTE FROM A GPX' }));
+    expect(await screen.findByLabelText('GPX file')).toBeTruthy();
+    expect(location.search).not.toContain('route=');
+  });
+
+  it('offers no adding offline (the list is the copy on this device)', async () => {
+    await loadMyRoutesList(); // a copy exists
+    online = false;
+    render(<SixKMode onSwitchMode={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'My routes (1)' }));
+    expect(screen.getByText(/You’re offline/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'ADD A ROUTE FROM A GPX' })).toBeNull();
+  });
+
   it('shows no My routes tab when nobody is signed in', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ state: 'signed-out' })));
     render(<SixKMode onSwitchMode={() => {}} />);

@@ -1,5 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import type { Draft } from '../myRoutes/build';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { draftStore } from '../myRoutes/drafts';
 import { clearMyRoutesCopies } from '../myRoutes/load';
 import { clearRouteMaps } from '../sixk/map/routeTiles';
@@ -27,9 +26,6 @@ import { withoutAccountParam } from './link';
 import { cleanDisplayName, displayNameProblem, DISPLAY_NAME_MAX, normalizeUsername, usernameProblem, USERNAME_MAX } from './rules';
 import './account.css';
 
-// The add-a-route screens (with the route builder and the map) load only when opened.
-const AddRoute = lazy(() => import('../myRoutes/AddRoute'));
-
 interface Props {
   onSwitchMode: () => void;
   /** The `?account=` status the server sent back with, '' for none (see link.ts). */
@@ -54,8 +50,6 @@ export default function AccountMode({ onSwitchMode, returnStatus = null }: Props
   const [notice] = useState(() => (returnStatus ? (RETURN_MESSAGES[returnStatus] ?? null) : null));
   const [code, setCode] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
-  // Adding a route: null = not adding; { draft: null } = a new one; { draft } = carrying on with one.
-  const [adding, setAdding] = useState<{ draft: Draft | null } | null>(null);
 
   const refresh = useCallback(async () => setMe(await getMe()), []);
 
@@ -100,13 +94,7 @@ export default function AccountMode({ onSwitchMode, returnStatus = null }: Props
   } else if (me.needsRecoveryCode) {
     body = <NewCodeNeededView onCode={setCode} />;
   } else {
-    body = adding ? (
-      <Suspense fallback={<p className="loading">Loading…</p>}>
-        <AddRoute draft={adding.draft} onDone={() => setAdding(null)} />
-      </Suspense>
-    ) : (
-      <SettingsView me={me} onChanged={(next) => setMe(next)} onCode={setCode} onAddRoute={(draft) => setAdding({ draft })} />
-    );
+    body = <SettingsView me={me} onChanged={(next) => setMe(next)} onCode={setCode} />;
   }
 
   return (
@@ -406,12 +394,10 @@ function SettingsView({
   me,
   onChanged,
   onCode,
-  onAddRoute,
 }: {
   me: Extract<Me, { state: 'ready' }>;
   onChanged: (me: Me) => void;
   onCode: (code: string) => void;
-  onAddRoute: (draft: Draft | null) => void;
 }) {
   const { user } = me;
   return (
@@ -422,7 +408,7 @@ function SettingsView({
         </p>
         <p className="acct-small">{user.isAdmin ? 'Admin' : ROLE_LABEL[user.role]}</p>
       </section>
-      <MyRoutesSection onAdd={onAddRoute} />
+      <MyRoutesSection />
       <ProfileForm me={me} onChanged={onChanged} />
       <RecoverySection onCode={onCode} />
       <DevicesSection />
@@ -634,17 +620,13 @@ function DeleteSection({ username }: { username: string }) {
 
 const kmText = (m: number) => `${(m / 1000).toFixed(1)} km`;
 
-function MyRoutesSection({ onAdd }: { onAdd: (draft: Draft | null) => void }) {
+function MyRoutesSection() {
   const [routes, setRoutes] = useState<MyRouteSummary[] | null>(null);
-  const [drafts, setDrafts] = useState<Draft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
     listMyRoutes()
       .then((r) => setRoutes(r.routes))
       .catch((err) => setError(errorText(err)));
-    void draftStore()
-      .list()
-      .then(setDrafts);
   }, []);
   useEffect(load, [load]);
 
@@ -653,7 +635,9 @@ function MyRoutesSection({ onAdd }: { onAdd: (draft: Draft | null) => void }) {
       <h2 id="acct-routes-title" className="acct__h2">
         My routes
       </h2>
-      <p className="acct-small">Routes only you can see, on all your devices. Follow them from the Route Library (My routes).</p>
+      <p className="acct-small">
+        Routes only you can see, on all your devices. Add, open and follow them in the Route Library, under My routes.
+      </p>
       {error && (
         <p className="acct-error" role="alert">
           {error}
@@ -675,39 +659,7 @@ function MyRoutesSection({ onAdd }: { onAdd: (draft: Draft | null) => void }) {
           ))}
         </ul>
       )}
-      {routes && routes.length === 0 && drafts.length === 0 && <p>No routes yet.</p>}
-      {drafts.length > 0 && (
-        <>
-          <h3 className="acct__h3">Not saved yet (on this device only)</h3>
-          <ul className="acct-list">
-            {drafts.map((d) => (
-              <li key={d.id}>
-                <span>
-                  <strong>{d.data.name}</strong>
-                  <br />
-                  <span className="acct-small">{kmText(d.data.stats.distanceM)}</span>
-                </span>
-                <span className="acct-actions">
-                  <button type="button" className="btn btn--secondary btn--small" onClick={() => onAdd(d)}>
-                    CONTINUE
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--danger btn--small"
-                    onClick={() => void draftStore().remove(d.id).then(load)}
-                    aria-label={`Discard ${d.data.name}`}
-                  >
-                    DISCARD
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      <button type="button" className="btn btn--primary btn--block" onClick={() => onAdd(null)}>
-        ADD A ROUTE FROM A GPX
-      </button>
+      {routes && routes.length === 0 && <p>No routes yet.</p>}
     </section>
   );
 }

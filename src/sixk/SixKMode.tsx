@@ -1,5 +1,5 @@
 import { UpdateBanner } from '../components/UpdateBanner';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { loadRoutePace, loadRouteSort, saveRoutePace, saveRouteSort } from '../lib/prefs';
 import { matchSharedRoute, withoutRouteParam, withRouteParam } from '../lib/routeLink';
 import { loadRoute, manifest, type LoadedRoute } from './data';
@@ -15,10 +15,16 @@ import type { MyRoutesList as MyList } from '../myRoutes/load';
 
 // Personal routes load their code only in builds with accounts (__ACCOUNTS__), so other builds don't ship it.
 const myRoutes = () => import('../myRoutes/load');
+const AddRoute = __ACCOUNTS__ ? lazy(() => import('../myRoutes/AddRoute')) : null;
 import './sixk.css';
 
 /** `mine`: one of the signed-in person's own routes (never in the address or a share link). */
-type View = { name: 'library' } | { name: 'route'; id: string; mine?: boolean } | { name: 'follow'; id: string; mine?: boolean };
+type View =
+  | { name: 'library' }
+  | { name: 'route'; id: string; mine?: boolean }
+  | { name: 'follow'; id: string; mine?: boolean }
+  /** Adding a personal route (signed in only); `draftId` carries on with a draft saved on this device. */
+  | { name: 'add'; draftId?: string | null };
 
 interface Props {
   onSwitchMode: () => void;
@@ -33,7 +39,7 @@ const routeIds = manifest.routes.map((r) => r.id);
  * so it can be copied from the address bar and a reload reopens it; the library doesn't.
  */
 const addressFor = (view: View) =>
-  view.name === 'library' || view.mine ? withoutRouteParam(location.href) : withRouteParam(location.href, view.id);
+  view.name === 'library' || view.name === 'add' || view.mine ? withoutRouteParam(location.href) : withRouteParam(location.href, view.id);
 
 /**
  * 6K Route Library mode: library → route page → follow view.
@@ -64,17 +70,23 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
   // My routes (accounts only): the list, once known; which list the library shows.
   const [myList, setMyList] = useState<MyList | null>(null);
   const [tab, setTab] = useState<'all' | 'mine'>('all');
-  useEffect(() => {
-    if (!__ACCOUNTS__) return;
+  // Adding a route needs a signed-in account and a connection (offline, the list is the saved copy).
+  const [canAdd, setCanAdd] = useState(false);
+  const loadMine = useCallback(() => {
+    if (!__ACCOUNTS__) return () => {};
     let cancelled = false;
     void getMe()
-      .then((me) => (me.state === 'ready' || me.state === 'offline' ? myRoutes().then((m) => m.loadMyRoutesList()) : null))
+      .then((me) => {
+        if (!cancelled) setCanAdd(me.state === 'ready');
+        return me.state === 'ready' || me.state === 'offline' ? myRoutes().then((m) => m.loadMyRoutesList()) : null;
+      })
       .then((list) => !cancelled && setMyList(list))
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
+  useEffect(loadMine, [loadMine]);
   // Routes tagged "Testing" stay hidden unless turned on, also for this visit only.
   const [showTesting, setShowTesting] = useState(false);
   const changeShowTesting = useCallback((show: boolean) => {
@@ -113,8 +125,8 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
     }
   }, [openRoute, linkedRoute]);
 
-  const id = view.name === 'library' ? null : view.id;
-  const mine = view.name !== 'library' && !!view.mine;
+  const id = view.name === 'route' || view.name === 'follow' ? view.id : null;
+  const mine = (view.name === 'route' || view.name === 'follow') && !!view.mine;
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
@@ -157,6 +169,8 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
   const title =
     view.name === 'library'
       ? 'Route Library'
+      : view.name === 'add'
+        ? 'My routes'
       : mine
         ? (loaded?.data.name ?? myList?.routes.find((r) => r.id === id)?.name ?? 'Route')
         : (manifest.routes.find((r) => r.id === id)?.name ?? 'Route');
@@ -209,7 +223,12 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
               </div>
             )}
             {__ACCOUNTS__ && myList && tab === 'mine' ? (
-              <MyRoutesList list={myList} pace={pace} onOpen={(routeId) => go({ name: 'route', id: routeId, mine: true })} />
+              <MyRoutesList
+                list={myList}
+                pace={pace}
+                onOpen={(routeId) => go({ name: 'route', id: routeId, mine: true })}
+                onAdd={canAdd ? (draftId) => go({ name: 'add', draftId }) : undefined}
+              />
             ) : (
             <Library
               onOpen={(routeId) => go({ name: 'route', id: routeId })}
@@ -236,6 +255,19 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
             />
           </>
         )}
+        {__ACCOUNTS__ && AddRoute && view.name === 'add' && (
+          <Suspense fallback={<p className="loading">Loading…</p>}>
+            <AddRouteView
+              key={view.draftId ?? 'new'}
+              draftId={view.draftId ?? null}
+              onDone={() => {
+                loadMine();
+                setTab('mine');
+                go({ name: 'library' });
+              }}
+            />
+          </Suspense>
+        )}
         {view.name === 'route' &&
           (loaded ? (
             <RoutePage route={loaded} personal={mine} onStart={() => go({ name: 'follow', id: loaded.data.id, mine })} />
@@ -249,4 +281,15 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
       </footer>
     </div>
   );
+}
+
+/** Adding a route inside the library: loads the draft to carry on with (kept on this device), if any. */
+function AddRouteView({ draftId, onDone }: { draftId: string | null; onDone: () => void }) {
+  const [draft, setDraft] = useState<import('../myRoutes/build').Draft | null | undefined>(draftId ? undefined : null);
+  useEffect(() => {
+    if (!draftId) return;
+    void import('../myRoutes/drafts').then((m) => m.draftStore().get(draftId)).then((d) => setDraft(d ?? null));
+  }, [draftId]);
+  if (!AddRoute || draft === undefined) return <p className="loading">Loading…</p>;
+  return <AddRoute draft={draft} onDone={onDone} />;
 }

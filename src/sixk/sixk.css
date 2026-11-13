@@ -1033,3 +1033,33 @@
 .route-mapnote--outside p {
   color: #8a5a00;
 }
+
+/* Adding a route from My routes */
+.lib-add {
+  margin: 0 0 12px;
+}
+
+.lib-drafts {
+  margin: 0 0 12px;
+}
+
+.lib-drafts__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lib-drafts__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(44, 44, 42, 0.2);
+}
+
+.lib-drafts__actions {
+  display: flex;
+  gap: 8px;
+}

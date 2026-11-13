@@ -139,13 +139,23 @@ Same steps and rules as the dev route editor, running in the app. **[approved: "
    built route.
 
 **Where routes can be** **[approved]**:
-- **Public routes must lie inside the map area** (§4a: Montréal to Québec City). Publishing is
+- **Public routes must lie inside the map area** (§4a: Montréal to Québec City
+  once per-route maps are on; while they're paused, the Montréal file's area). Publishing is
   refused otherwise.
 - **Personal routes can be anywhere**, with a warning when they leave the map
   area ("no offline map here") or Canada ("no elevation here": CDEM covers
   Canada only).
 
-### 4a. Offline maps per route **[approved: own Québec map on R2]**
+### 4a. Offline maps per route **[approved: own Québec map on R2]** · **paused 2026-11-13**
+
+**Paused [approved 2026-11-13]:** turning on R2 asks for a payment method, even
+on the free plan, and the budget is $0 with no card on file. Beta and live keep
+the one Montréal file. The code is built and tested (`server/mapTiles.ts`,
+`src/sixk/map/routeTiles.ts`) but stays off: it only runs in builds with
+`ROUTE_MAPS=1`, which no Cloudflare project sets. Until it's on, personal routes
+outside the Montréal file's area show their line without streets underneath.
+To resume: enable R2, upload the map (README "Per-route maps"), bind it as
+`MAPS` and set `ROUTE_MAPS=1` on the project.
 
 Replaces the single precached `public/maps/montreal.pmtiles`, which only covers
 the current library routes plus 1.1 km (the whole island would be ~55 MB).
@@ -520,8 +530,9 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
      2d my routes in the library + offline + beta deploy, 2e Québec map on R2.
      **2a built 2026-11-12** (`server/routes.ts`, `server/lookups.ts`).
      **2b built 2026-11-12** (`scripts/lib/build-route.ts`, `src/myRoutes/`).
-     **2c built 2026-11-12** (`src/myRoutes/AddRoute.tsx`, "My routes" on the
-     account screen): choose a GPX → trim 0–500 m from the start and end
+     **2c built 2026-11-12** (`src/myRoutes/AddRoute.tsx`; since 2026-11-13 opened
+     from Route Library → My routes, only when signed in and online; the account
+     screen keeps the list with delete): choose a GPX → trim 0–500 m from the start and end
      (before building, so the trimmed part is never looked up or saved) →
      build with progress → check turns (the route editor's `TurnEditor`, which
      now ships in this lazy chunk) → name, place, description, tags, notes →
@@ -536,7 +547,7 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
      are copied to Cache Storage (`src/myRoutes/load.ts`) for offline use and
      deleted on sign-out and account deletion. Only builds with accounts carry
      this code.
-     **2e built 2026-11-13** (`server/mapTiles.ts`, `src/sixk/map/routeTiles.ts`):
+     **2e built 2026-11-13, then paused (not switched on anywhere; §4a)** (`server/mapTiles.ts`, `src/sixk/map/routeTiles.ts`):
      in builds with `ROUTE_MAPS=1` (beta) and the dev server, each route page
      saves its area (route + 1.1 km, zoom 10–15; Pi Day = 36 tiles) and shows
      "✓ Map saved for offline", the maps read the saved tiles first, the one
