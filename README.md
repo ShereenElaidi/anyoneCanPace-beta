@@ -269,9 +269,11 @@ Optional accounts so pacers and runners can keep their own routes across devices
 
 Without `.dev.vars` the account screen says accounts aren't available; the rest of the app is unaffected. Deleting `.cache/accounts-dev.sqlite` starts over.
 
-### On Cloudflare (not done yet)
+### On Cloudflare
 
-Each Pages project (beta first) needs its sign-in app's **Application Login URI** set to `https://<site>/api/auth/login` (Auth0 then offers "Back to AnyoneCanPace" after a recovery-code password reset; Auth0 ignores return addresses on its current pages and only accepts HTTPS here), a D1 database bound as `DB` (migrations applied with `wrangler d1 migrations apply`), the settings above as environment variables (secrets encrypted), `APP_BASE=/`, and `ACCOUNTS=1` in its build variables. Live and beta use separate Auth0 tenants and databases.
+**Beta is set up** (2026-11-12): D1 database `anyonecanpace-beta`, Auth0 user database `beta-users` with the apps "AnyoneCanPace beta" and "AnyoneCanPace beta server" (in the same Auth0 tenant as live; the account can't have a second tenant, so each environment has its own user database and apps). Live isn't set up yet.
+
+Each Pages project needs its sign-in app's **Application Login URI** set to `https://<site>/api/auth/login` (Auth0 then offers "Back to AnyoneCanPace" after a recovery-code password reset; Auth0 ignores return addresses on its current pages and only accepts HTTPS here), a D1 database bound as `DB` (migrations applied with `wrangler d1 migrations apply`), the settings above as environment variables (secrets encrypted), `APP_BASE=/`, and `ACCOUNTS=1` in its build variables. Live and beta use separate D1 databases and separate Auth0 user databases and apps. After changing a variable: **Save**, then Deployments → ⋯ → **Retry deployment** (settings only apply to new deployments). The D1 console turns line breaks into spaces, so paste SQL without `--` comments.
 
 ## Tech stack
 

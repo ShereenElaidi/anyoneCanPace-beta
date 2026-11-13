@@ -210,7 +210,9 @@ the current library routes plus 1.1 km (the whole island would be ~55 MB).
   (`<tenant>.us.auth0.com`), although the sign-up form said Québec, Canada. A
   tenant's region can't be changed. **Kept for live**, covered by the privacy
   assessment and privacy policy (§11), which Cloudflare needs anyway. **[approved]**
-  Beta gets its own second tenant (any region).
+  The account can't create a second tenant, so beta and local development
+  share it, each with **its own user database (connection) and its own apps**
+  (§6). **[approved 2026-11-12]**
 - **Sign-up:** email + password (Auth0 stores and hashes passwords), then a
   username and a display name in the app. **[approved]**
 - **Accounts are 14+ only.** Under Law 25 a child under 14 needs a parent's
@@ -335,10 +337,22 @@ Cloudflare Pages ── static app (as today)
 
 - **Pages Functions** in this repo (`functions/api/`), same domain as the app: no
   CORS, one deploy, one place for code review. **[assumed]**
-- **Beta and live have separate D1 databases, R2 buckets and separate Auth0
-  tenants** (not just separate Auth0 applications: applications in one tenant
-  share the same users, so a beta sign-up would be a live account). Testing on
-  beta never touches real accounts or routes. **[assumed]**
+- **Beta, local development and live are kept apart inside the one Auth0
+  tenant** (a second tenant can't be created on this account) and by separate
+  D1 databases and R2 buckets. **[approved 2026-11-12]**
+  | | Auth0 user database | Sign-in app | Server (M2M) app | D1 |
+  |---|---|---|---|---|
+  | Local dev | `local-dev-users` | AnyoneCanPace local | AnyoneCanPace local server | `.cache/accounts-dev.sqlite` |
+  | Beta | `beta-users` | AnyoneCanPace beta | AnyoneCanPace beta server | `anyonecanpace-beta` (eastern North America) |
+  | Live (later) | `Username-Password-Authentication` | to create | to create | to create |
+  - Each sign-in app has only its own user database switched on (Google off),
+    and every user database uses **email** as the identifier (our username is
+    app-level, §5).
+  - Risk: a server (M2M) app's permissions can't be limited to one user
+    database, so the beta server app could in principle delete live users. Our
+    code only ever touches the signed-in person's own account. **Before launch:**
+    consider moving beta to a separate Auth0 account (its own tenant).
+  - Before launch: switch Google sign-in off tenant-wide, and delete test users.
 - **Auth0 callback addresses:** live, beta and the local HTTPS dev address, each
   only in its own tenant. **[assumed]**
 - **Local development:** Functions, D1 and R2 run locally with `wrangler pages dev`
@@ -474,8 +488,12 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
 **[assumed]**
 
 0. **Prerequisites.**
-   - Live Auth0 tenant created (2026-11-12, US region, kept). Create a second
-     tenant for beta. Create beta D1/R2.
+   - Live Auth0 tenant created (2026-11-12, US region, kept). Beta and local
+     development share it with separate user databases (§6).
+   - **Beta set up 2026-11-12:** D1 `anyonecanpace-beta` (tables from
+     `migrations/0001_accounts.sql`, recorded in `d1_migrations`), Pages project
+     settings and `DB` binding, `feature/accounts` deployed. R2 not needed until
+     step 2.
    - **First test, before anything else:** sign in through Auth0 from the
      *installed* iPhone app and confirm the app comes back signed in. If it fails,
      the fallback (sign-in from our own screen via Auth0's API) changes §5.
@@ -491,6 +509,10 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
      - Auth0's token reported no sign-in method (`amr` absent) for password
        sign-ins. Passkeys weren't switched on for the tenant, so passkey
        detection is still unchecked.
+     - **Step 1 on beta, 2026-11-12, installed iPhone app, real code:** sign-up,
+       setup, staying signed in after reopening, sign-out, recovery code
+       (password reset, "Back to AnyoneCanPace beta"), new code, account
+       deletion. All worked.
 1. Accounts: sign-up, sign-in, sessions, recovery code, display name, delete account.
 2. Personal library: upload → check turns → save → follow, offline cache.
    Cut the Québec map, check its size, upload to R2, and switch routes to
