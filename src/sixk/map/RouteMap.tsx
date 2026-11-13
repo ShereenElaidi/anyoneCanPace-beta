@@ -21,6 +21,8 @@ import type { TrackFeature } from '../../nav/types';
 import { classifyMapError } from './mapErrors';
 import { BRAND, buildStyle } from './mapStyle';
 import { mapUrl, readSavedMap } from './offlineMap';
+import { ROUTE_MAPS } from './routeTiles';
+import { routeTilesBasemap } from './tilesProtocol';
 
 setWorkerUrl(workerUrl);
 
@@ -42,7 +44,9 @@ class BlobSource implements Source {
   }
 }
 
-async function basemapUrl(): Promise<{ url: string; offline: boolean }> {
+async function basemapUrl(): Promise<{ url: string | { tiles: string; maxzoom: number }; offline: boolean }> {
+  // Per-route maps: tiles from the route's saved area, else the server (the route page shows the saved state).
+  if (ROUTE_MAPS) return { url: routeTilesBasemap(), offline: true };
   if (!protocol) {
     protocol = new Protocol();
     addProtocol('pmtiles', protocol.tile);

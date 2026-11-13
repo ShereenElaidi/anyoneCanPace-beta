@@ -10,6 +10,7 @@ import { localDate } from '../weather/runTime';
 import type { LoadedRoute } from './data';
 import { TurnIcon } from './TurnIcon';
 import { verificationText } from '../nav/verification';
+import { ROUTE_MAPS, useRouteMap } from './map/routeTiles';
 
 const loadRouteMap = () => import('./map/RouteMap');
 
@@ -68,6 +69,7 @@ export function RoutePage({ route, onStart, personal = false }: Props) {
           )}
         />
       </div>
+      {ROUTE_MAPS && <RouteMapNote routeId={data.id} bbox={data.bbox} />}
 
       <VerificationNote data={data} />
 
@@ -175,6 +177,29 @@ const appUrl = () => new URL(import.meta.env.BASE_URL, location.origin).href;
  * Share route: the phone's share sheet when there is one, else copy the link,
  * else show it to copy by hand. The link only names the route (src/lib/routeLink.ts).
  */
+/** Whether this route's map is saved on the phone (per-route maps). Text, never colour alone. */
+function RouteMapNote({ routeId, bbox }: { routeId: string; bbox: [number, number, number, number] }) {
+  const { status, save } = useRouteMap(routeId, bbox);
+  if (status.state === 'checking') return null;
+  return (
+    <div className={`route-mapnote route-mapnote--${status.state}`} role="status">
+      {status.state === 'saved' && <p>✓ Map saved for offline</p>}
+      {status.state === 'saving' && <p>Saving the map for offline… {Math.round(status.fraction * 100)} %</p>}
+      {status.state === 'outside' && (
+        <p>No offline map here: the map covers Montréal to Québec City. The route works; the map shows only its line.</p>
+      )}
+      {(status.state === 'missing' || status.state === 'error') && (
+        <>
+          <p>{status.state === 'error' ? status.message : 'Map not saved for offline yet.'}</p>
+          <button type="button" className="btn btn--secondary btn--small" onClick={save}>
+            SAVE MAP
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function useShareRoute(data: LoadedRoute['data']) {
   const url = routeShareUrl(data.id, appUrl());
   const [state, setState] = useState<ShareState>('idle');

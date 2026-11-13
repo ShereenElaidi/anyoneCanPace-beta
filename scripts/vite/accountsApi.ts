@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import type { Plugin } from 'vite';
+import { fileBucket } from '../../server/dev/fileBucket.ts';
 import { applyMigrations, sqliteD1 } from '../../server/dev/sqliteD1.ts';
 import { handle } from '../../server/handler.ts';
 import type { Env } from '../../server/types.ts';
@@ -76,7 +77,10 @@ export function accountsApi(): Plugin {
             mkdirSync(join(root, '.cache'), { recursive: true });
             const db = sqliteD1(join(root, '.cache', 'accounts-dev.sqlite'));
             await applyMigrations(db, join(root, 'migrations'));
-            env = { ...(vars as unknown as Env), DB: db, APP_BASE: vars.APP_BASE || base };
+            // Map tiles from a local map file: the Québec cut if it's been made (.cache/maps/), else the Montréal one.
+            const quebec = join(root, '.cache', 'maps', 'quebec.pmtiles');
+            const map = existsSync(quebec) ? quebec : join(root, 'public', 'maps', 'montreal.pmtiles');
+            env = { ...(vars as unknown as Env), DB: db, APP_BASE: vars.APP_BASE || base, MAPS: fileBucket(map) };
           }
           const proto = (req.socket as { encrypted?: boolean }).encrypted ? 'https' : 'http';
           // `server.middlewares.use('/api', …)` strips the prefix; put it back.

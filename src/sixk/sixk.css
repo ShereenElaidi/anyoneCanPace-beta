@@ -1011,3 +1011,25 @@
   font-weight: 700;
   color: var(--navy);
 }
+
+/* Per-route offline map status (src/sixk/map/routeTiles.ts) */
+.route-mapnote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.route-mapnote p {
+  margin: 0;
+}
+
+.route-mapnote--error p,
+.route-mapnote--outside p {
+  color: #8a5a00;
+}

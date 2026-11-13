@@ -81,6 +81,9 @@ export default defineConfig(({ command }) => ({
     __BUILD_ID__: JSON.stringify(buildId()),
     // Accounts show only where the backend is set up: the dev server, or a build with ACCOUNTS=1 (the beta project for now).
     __ACCOUNTS__: JSON.stringify(command === 'serve' || process.env.ACCOUNTS === '1'),
+    // Per-route offline maps from /api/map/tiles (R2) instead of the one Montréal file: the dev server, or ROUTE_MAPS=1 (beta).
+    // Tests keep the live behaviour (one Montréal file); src/sixk/map/routeTiles.test.ts covers per-route maps.
+    __ROUTE_MAPS__: JSON.stringify(!process.env.VITEST && (command === 'serve' || process.env.ROUTE_MAPS === '1')),
   },
   plugins: [
     react(),

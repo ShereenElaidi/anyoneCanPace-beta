@@ -14,6 +14,8 @@ import { pointAt, type PreparedRoute } from '../../nav/route';
 import type { TrackFeature, Turn } from '../../nav/types';
 import { BRAND, buildStyle } from '../../sixk/map/mapStyle';
 import { mapUrl } from '../../sixk/map/offlineMap';
+import { ROUTE_MAPS } from '../../sixk/map/routeTiles';
+import { routeTilesBasemap } from '../../sixk/map/tilesProtocol';
 import type { ClickOption } from './turnEdit';
 import type { ReviewTurn } from './types';
 
@@ -58,17 +60,19 @@ export default function EditorMap({ track, bbox, route, turns, selected, suggest
   useEffect(() => {
     if (!box.current) return;
     const { track, bbox } = trackRef.current;
-    if (!protocol) {
-      protocol = new Protocol();
-      addProtocol('pmtiles', protocol.tile);
+    if (!ROUTE_MAPS) {
+      if (!protocol) {
+        protocol = new Protocol();
+        addProtocol('pmtiles', protocol.tile);
+      }
+      protocol.add(new PMTiles(new FetchSource(mapUrl())));
     }
-    protocol.add(new PMTiles(new FetchSource(mapUrl())));
     const glyphs = `${location.origin}${import.meta.env.BASE_URL}maps/fonts/{fontstack}/{range}.pbf`;
     let map: MapLibreMap;
     try {
       map = new MapLibreMap({
         container: box.current,
-        style: buildStyle(`pmtiles://${mapUrl()}`, glyphs),
+        style: buildStyle(ROUTE_MAPS ? routeTilesBasemap() : `pmtiles://${mapUrl()}`, glyphs),
         bounds: bbox,
         fitBoundsOptions: { padding: 30 },
         maxZoom: 19,

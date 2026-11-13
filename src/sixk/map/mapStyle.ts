@@ -21,7 +21,11 @@ export const GLYPH_FONT = 'Noto Sans Medium';
 /** Width that grows with zoom: [zoom, px] pairs. */
 const width = (...stops: number[]) => ['interpolate', ['exponential', 1.6], ['zoom'], ...stops];
 
-export function buildStyle(pmtilesUrl: string, glyphsUrl: string): StyleSpecification {
+/**
+ * `basemap`: a PMTiles URL (`pmtiles://…`, the one-file map), or a tile URL
+ * template with its highest zoom (per-route maps, src/sixk/map/routeTiles.ts).
+ */
+export function buildStyle(basemap: string | { tiles: string; maxzoom: number }, glyphsUrl: string): StyleSpecification {
   const roads = (kinds: string[]) => ['in', ['get', 'kind'], ['literal', kinds]];
   return {
     version: 8,
@@ -29,7 +33,7 @@ export function buildStyle(pmtilesUrl: string, glyphsUrl: string): StyleSpecific
     sources: {
       [BASEMAP_SOURCE]: {
         type: 'vector',
-        url: pmtilesUrl,
+        ...(typeof basemap === 'string' ? { url: basemap } : { tiles: [basemap.tiles], maxzoom: basemap.maxzoom }),
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> · <a href="https://protomaps.com">Protomaps</a>',
       },
     },

@@ -6,6 +6,7 @@ import { verificationText } from '../nav/verification';
 import { manifest } from './data';
 import { estimateTime, FILTERS, KIND_WORD, matchesFilter, ROUTE_TAGS, sortRoutes, terrainText, visibleRoutes, type RouteFilter, type RouteSort } from './describe';
 import { mapStatusText, saveMap, shouldAutoSave, useOfflineMap, type MapStatus } from './map/offlineMap';
+import { ROUTE_MAPS } from './map/routeTiles';
 
 export const KIND_LABEL: Record<RouteKind, string> = {
   loop: 'Loop',
@@ -30,7 +31,8 @@ export function Library({ onOpen, pace, sort, filter, onFilter, showTesting, onS
   const status = useOfflineMap();
   useMapAutoSave(status);
   // Saved and current: a quiet line at the bottom. Anything else needs attention, at the top.
-  const mapFine = status.state === 'saved' && !status.outdated;
+  // Per-route maps: each route page saves its own area, so the one-file map is neither shown nor saved here.
+  const mapFine = ROUTE_MAPS || (status.state === 'saved' && !status.outdated);
   const routes = sortRoutes(
     visibleRoutes(manifest.routes, showTesting).filter((r) => matchesFilter(r, filter)),
     sort,
@@ -82,7 +84,7 @@ export function Library({ onOpen, pace, sort, filter, onFilter, showTesting, onS
         )}
       </section>
 
-      {mapFine && status.state === 'saved' && (
+      {!ROUTE_MAPS && mapFine && status.state === 'saved' && (
         <p className="lib-offline" aria-hidden="true">
           <b>✓ Works offline</b> · map saved{' '}
           {new Date(status.savedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
@@ -148,6 +150,7 @@ export function RouteCard({ route, pace, onOpen }: { route: RouteSummary; pace: 
 function useMapAutoSave(status: MapStatus) {
   const outdated = status.state === 'saved' && !!status.outdated;
   useEffect(() => {
+    if (ROUTE_MAPS) return;
     if ((status.state === 'missing' || outdated) && shouldAutoSave()) void saveMap();
   }, [status.state, outdated]);
 }

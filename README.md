@@ -270,6 +270,16 @@ Optional accounts so pacers and runners can keep their own routes across devices
 
 Without `.dev.vars` the account screen says accounts aren't available; the rest of the app is unaffected. Deleting `.cache/accounts-dev.sqlite` starts over.
 
+### Per-route maps (beta)
+
+In builds with `ROUTE_MAPS=1` (and the dev server), each route page saves the map around its route (route + 1.1 km, zoom 10–15, a few MB) from `/api/map/tiles/z/x/y` (`server/mapTiles.ts`), instead of every phone downloading the one Montréal file. The tiles come from one map file in R2, the Montréal–Québec City corridor (280 MB):
+
+```bash
+npm run map -- --bbox=-74.6,45.0,-70.9,47.0 --out=.cache/maps/quebec.pmtiles
+```
+
+Upload it to the R2 bucket bound as `MAPS` (Cloudflare dashboard → R2 → the bucket → Upload; files over ~300 MB need the command-line upload instead), named `quebec.pmtiles` (or set `MAP_OBJECT`), then set `TILES_VERSION` in `src/sixk/map/routeTiles.ts` to the build date so phones fetch the new tiles. Locally, the dev server serves tiles from `.cache/maps/quebec.pmtiles` if it exists, else from `public/maps/montreal.pmtiles`.
+
 ### On Cloudflare
 
 **Beta is set up** (2026-11-12): D1 database `anyonecanpace-beta`, Auth0 user database `beta-users` with the apps "AnyoneCanPace beta" and "AnyoneCanPace beta server" (in the same Auth0 tenant as live; the account can't have a second tenant, so each environment has its own user database and apps). Live isn't set up yet.

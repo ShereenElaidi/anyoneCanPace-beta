@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEven
 import type { Draft } from '../myRoutes/build';
 import { draftStore } from '../myRoutes/drafts';
 import { clearMyRoutesCopies } from '../myRoutes/load';
+import { clearRouteMaps } from '../sixk/map/routeTiles';
 import { UpdateBanner } from '../components/UpdateBanner';
 import {
   ApiError,
@@ -575,7 +576,7 @@ function SignOutButton({ label = 'SIGN OUT' }: { label?: string }) {
           signOut()
             // Unsaved routes stay on a device only while its person is signed in.
             .then(async ({ logoutUrl }) => {
-              await Promise.all([draftStore().clear(), clearMyRoutesCopies()]);
+              await Promise.all([draftStore().clear(), clearMyRoutesCopies(), clearRouteMaps()]);
               location.assign(logoutUrl);
             })
             .catch((err) => setError(errorText(err)))
@@ -616,7 +617,7 @@ function DeleteSection({ username }: { username: string }) {
           confirm.tap(() =>
             deleteAccount(typed)
               .then(async ({ logoutUrl }) => {
-                await Promise.all([draftStore().clear(), clearMyRoutesCopies()]);
+                await Promise.all([draftStore().clear(), clearMyRoutesCopies(), clearRouteMaps()]);
                 location.assign(logoutUrl);
               })
               .catch((err) => setError(errorText(err))),

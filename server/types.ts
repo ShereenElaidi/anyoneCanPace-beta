@@ -22,6 +22,10 @@ export interface D1Database {
 /** Settings of each Pages project (live, beta) or `.dev.vars` locally. */
 export interface Env {
   DB: D1Database;
+  /** R2 bucket holding the map (server/mapTiles.ts). Optional: without it, map tiles answer 503. */
+  MAPS?: import('./mapTiles.ts').R2Bucket;
+  /** The map file's name in MAPS (default quebec.pmtiles). */
+  MAP_OBJECT?: string;
   /** e.g. `dev-xxxx.us.auth0.com` */
   AUTH0_DOMAIN: string;
   /** The "Regular Web Application" used for sign-in. */

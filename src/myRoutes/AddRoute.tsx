@@ -13,6 +13,7 @@ import type { Turn } from '../nav/types';
 import { DESCRIPTION_MAX, ROUTE_TAGS, validateDescription } from '../sixk/describe';
 import { buildDraft, TRIM_CHOICES, uploadBody, type BuildStep, type Draft } from './build';
 import { draftStore } from './drafts';
+import { insideMapArea, ROUTE_MAPS } from '../sixk/map/routeTiles';
 import '../dev/routeEditor/editor.css';
 
 interface Props {
@@ -299,6 +300,9 @@ function TurnsStep({
         <p className="acct-error">The street-name service didn’t answer, so the turns have no street names. Add them below, or leave them blank.</p>
       )}
       {draft.startNote && <p className="re-problem">{draft.startNote}</p>}
+      {ROUTE_MAPS && !insideMapArea(data.bbox) && (
+        <p className="acct-small">This route is outside the offline map (Montréal to Québec City): it works, but its map will show only the route line.</p>
+      )}
       <p className="acct-small">
         These turns are a first guess. Check each one against the map: the direction, and the street you turn onto. Delete
         any that aren’t real turns, and tap the route to add a missing one.

@@ -139,7 +139,7 @@ Same steps and rules as the dev route editor, running in the app. **[approved: "
    built route.
 
 **Where routes can be** **[approved]**:
-- **Public routes must lie inside the Québec map area** (§4a). Publishing is
+- **Public routes must lie inside the map area** (§4a: Montréal to Québec City). Publishing is
   refused otherwise.
 - **Personal routes can be anywhere**, with a warning when they leave the map
   area ("no offline map here") or Canada ("no elevation here": CDEM covers
@@ -150,17 +150,23 @@ Same steps and rules as the dev route editor, running in the app. **[approved: "
 Replaces the single precached `public/maps/montreal.pmtiles`, which only covers
 the current library routes plus 1.1 km (the whole island would be ~55 MB).
 
-- **One Québec map on R2.** `scripts/cut-map.ts` cuts a larger area from the
-  Protomaps planet build (same data, same `mapStyle.ts`) and it's uploaded to R2.
-  Area: the whole province if the file stays under ~5 GB, otherwise southern
-  Québec. **[assumed: size checked when cutting]** R2's free plan holds 10 GB.
+- **One map on R2: Montréal to Québec City** **[approved 2026-11-13]**.
+  `scripts/cut-map.ts --bbox=-74.6,45.0,-70.9,47.0 --out=.cache/maps/quebec.pmtiles`
+  (Protomaps build 20261112, zoom 0–15). Sizes measured before choosing:
+  Montréal island 55 MB, greater Montréal 91 MB, Montréal region 125 MB,
+  **Montréal–Québec City 280 MB**, southern Québec 1.3 GB, whole province 3.5 GB.
+  The corridor covers where the group runs and stays under the dashboard's
+  ~300 MB upload limit; anything bigger needs an R2 access key and a
+  command-line upload. Moving to the whole province later is a re-cut and a
+  different upload, nothing else.
 - **Each route downloads its own area**, never the person's location: the route
   plus 1.1 km (the same margin `cut-map.ts` uses), zooms 10–15, saved in Cache
   Storage when the route is saved or opened online. The route shows "Map saved
   for offline ✓". Nothing about the download depends on GPS. **[approved]**
-- **Served by a Function**, `GET /api/map/tiles/:z/:x/:y`, reading the R2 file
-  with range requests (the PMTiles library runs on Workers) and caching tiles at
-  Cloudflare's edge. Open to visitors (public routes need maps too),
+- **Served by a Function**, `GET /api/map/tiles/:z/:x/:y` (`server/mapTiles.ts`),
+  reading the R2 file with range requests (the PMTiles library runs on Workers,
+  its directory cache kept between requests) and caching tiles at Cloudflare's
+  edge. Built 2026-11-13. Open to visitors (public routes need maps too),
   rate-limited. It never logs tile coordinates, because for a personal route they
   outline where that route is. **[assumed]**
 - **Clean-up:** a personal route's tiles are removed with the route and on sign-out. **[assumed]**
@@ -530,6 +536,17 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
      are copied to Cache Storage (`src/myRoutes/load.ts`) for offline use and
      deleted on sign-out and account deletion. Only builds with accounts carry
      this code.
+     **2e built 2026-11-13** (`server/mapTiles.ts`, `src/sixk/map/routeTiles.ts`):
+     in builds with `ROUTE_MAPS=1` (beta) and the dev server, each route page
+     saves its area (route + 1.1 km, zoom 10–15; Pi Day = 36 tiles) and shows
+     "✓ Map saved for offline", the maps read the saved tiles first, the one
+     Montréal file isn't downloaded, and tiles are deleted on sign-out. Live
+     keeps the Montréal file until it has R2. Tried locally with tiles from the
+     Montréal file.
+     **On beta 2026-11-13** (8841817, table added with
+     `0002_personal_routes.sql`): adding a route from a GPX, checking turns,
+     saving, opening it under My routes (no share), following it and opening
+     it again offline all worked from the installed iPhone app.
    - **Beta set up 2026-11-12:** D1 `anyonecanpace-beta` (tables from
      `migrations/0001_accounts.sql`, recorded in `d1_migrations`), Pages project
      settings and `DB` binding, `feature/accounts` deployed. R2 not needed until

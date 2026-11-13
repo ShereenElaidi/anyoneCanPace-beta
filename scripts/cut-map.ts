@@ -5,6 +5,8 @@
  *   npm run map                       default area: every route in the library + ~1.1 km
  *   npm run map -- --bbox=-73.98,45.40,-73.47,45.71   a fixed box, e.g. the whole island (~55 MB)
  *   npm run map -- --build=20261104   a specific Protomaps build
+ *   npm run map -- --bbox=-74.6,45.0,-70.9,47.0 --out=.cache/maps/quebec.pmtiles
+ *                                     the Montréal–Québec City map for per-route maps (uploaded to R2, not shipped)
  *
  * The CLI is downloaded once into .cache/tools/ (git-ignored) if it isn't on
  * your PATH, and only run after its archive matches the SHA-256 pinned below.
@@ -101,18 +103,23 @@ async function latestBuild(): Promise<string> {
 
 async function main() {
   const bbox = arg('bbox') ?? routesBbox();
+  const out = arg('out') ? resolve(ROOT, arg('out')!) : OUT;
   const build = arg('build') ?? (await latestBuild());
   const cli = findCli();
-  mkdirSync(dirname(OUT), { recursive: true });
+  mkdirSync(dirname(out), { recursive: true });
   console.log(`Extracting ${bbox} (z0–${MAX_ZOOM}) from Protomaps build ${build}…`);
   execFileSync(
     cli,
-    ['extract', `https://build.protomaps.com/${build}.pmtiles`, OUT, `--bbox=${bbox}`, `--maxzoom=${MAX_ZOOM}`],
+    ['extract', `https://build.protomaps.com/${build}.pmtiles`, out, `--bbox=${bbox}`, `--maxzoom=${MAX_ZOOM}`],
     { stdio: 'inherit' },
   );
-  const mb = statSync(OUT).size / 1024 / 1024;
-  console.log(`\nWrote public/maps/montreal.pmtiles (${mb.toFixed(1)} MB) from build ${build}.`);
-  console.log('Bump MAP_VERSION in src/sixk/map/offlineMap.ts so phones fetch the new file.');
+  const mb = statSync(out).size / 1024 / 1024;
+  console.log(`\nWrote ${out.slice(ROOT.length + 1)} (${mb.toFixed(1)} MB) from build ${build}.`);
+  console.log(
+    out === OUT
+      ? 'Bump MAP_VERSION in src/sixk/map/offlineMap.ts so phones fetch the new file.'
+      : 'Upload it to R2 (README "Per-route maps") and set TILES_VERSION in src/sixk/map/routeTiles.ts to the build date.',
+  );
 }
 
 main().catch((err: unknown) => {

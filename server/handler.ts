@@ -19,6 +19,7 @@ import { accountsDb, type AccountsDb, type SessionRow, type UserRow } from './db
 import type { Env } from './types.ts';
 import { elevationRequest, lookupElevation, lookupStreets, streetsQuery } from './lookups.ts';
 import { editPersonalRoute, montrealDate, prepareUpload, summaryOf } from './routes.ts';
+import { DEFAULT_MAP_OBJECT, serveTile } from './mapTiles.ts';
 import type { RouteData, TrackFeature } from '../src/nav/types.ts';
 import {
   cleanDisplayName,
@@ -159,6 +160,19 @@ export async function handle(request: Request, env: Env, now = Date.now()): Prom
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '');
   const method = request.method;
+
+  // Map tiles need no account or database (spec §4a).
+  if (path.startsWith('/api/map/tiles/') && (method === 'GET' || method === 'HEAD')) {
+    if (!env.MAPS) return problem(503, 'not-configured', 'The map isn’t available here yet.');
+    try {
+      const edge = (globalThis as { caches?: { default?: Parameters<typeof serveTile>[3] } }).caches?.default;
+      return await serveTile(request, env.MAPS, env.MAP_OBJECT || DEFAULT_MAP_OBJECT, edge);
+    } catch {
+      // No coordinates in the log: they'd outline a personal route.
+      console.error('[map] tile read failed');
+      return problem(502, 'map', 'The map didn’t load. Try again in a moment.');
+    }
+  }
   if (!env.DB || !env.AUTH0_DOMAIN || !env.RECOVERY_PEPPER) {
     // A deployment without accounts set up (e.g. the live site before launch).
     return problem(503, 'not-configured', 'Accounts aren’t available here yet.');
