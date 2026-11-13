@@ -329,8 +329,8 @@ phone / laptop (PWA)
   ▼
 Cloudflare Pages ── static app (as today)
   └─ functions/api/*  (Pages Functions)
-        ├─ D1  : users, sessions, routes, reports, change log
-        ├─ R2  : cleaned GPX + track GeoJSON, Québec map (PMTiles)
+        ├─ D1  : users, sessions, routes (with their track and cleaned GPX), reports, change log
+        ├─ R2  : Québec map (PMTiles) only
         ├─ Auth0 (sign-in, passkeys, emails, management API)
         └─ GeoGratis + Overpass (lookups for a route being built on the device)
 ```
@@ -379,12 +379,15 @@ Unsaved drafts live on the device (§4), so there is no drafts table.
 | `sessions` | `token_hash`, `user_id`, `created_at`, `expires_at`, `last_used_at`, `device_label` |
 | `recovery` | `user_id`, `code_hash`, `created_at`; attempts in `recovery_attempts` (`user_id`, `at`), pruned after a day |
 | `public_routes` | `id`, `owner_id` (nullable = former pacer), `owner_is_admin`, `owner_can_edit` (false once demoted), `status` (`live`/`withdrawn`), `withdrawn_at`, route fields (name, place, description, tags, notes, start street, turns, advisories, verification, geometry, stats), `track_key`, `gpx_key`, timestamps |
-| `personal_routes` | `id`, `owner_id` **NOT NULL**, the same route fields, `track_key`, `gpx_key`, timestamps |
+| `personal_routes` | `id`, `owner_id` **NOT NULL** (cascade on account delete), `summary`, `data`, `track` and `gpx` as JSON/text, timestamps (`migrations/0002_personal_routes.sql`) |
 | `reports` | `id`, `route_id`, `reporter_id` (nullable after deletion), `turn_index`, `kind`, `message`, `status`, `resolved_by`, timestamps |
 | `route_changes` | `id`, `route_id`, `actor_id`, `at`, `summary`, `before`, `after` |
 
-R2 keys: `public/<routeId>/…` and `personal/<ownerId>/<routeId>/…`, only ever read
-through a Function, never public URLs. **[assumed]**
+**Route files live in D1, not R2** **[approved 2026-11-12]**: a built route is
+5–8 KB and its cleaned GPX 8–22 KB (at most 1 MB is accepted), so 20 people × 50
+routes is tens of MB of D1's 5 GB. One storage service until the map needs R2
+(§4a), and one place to delete from when an account goes. Only ever read
+through a Function.
 
 ## 8. API
 
@@ -490,6 +493,11 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
 0. **Prerequisites.**
    - Live Auth0 tenant created (2026-11-12, US region, kept). Beta and local
      development share it with separate user databases (§6).
+   - **Step 2 split** **[approved 2026-11-12]**: 2a server (personal-routes
+     table and endpoints, lookup proxies), 2b building on the device (one shared
+     build module for the app and `npm run routes`), 2c add-a-route screens,
+     2d my routes in the library + offline + beta deploy, 2e Québec map on R2.
+     **2a built 2026-11-12** (`server/routes.ts`, `server/lookups.ts`).
    - **Beta set up 2026-11-12:** D1 `anyonecanpace-beta` (tables from
      `migrations/0001_accounts.sql`, recorded in `d1_migrations`), Pages project
      settings and `DB` binding, `feature/accounts` deployed. R2 not needed until

@@ -80,10 +80,12 @@ export function accountsDb(db: D1Database) {
     setRecoveryHash: (userId: string, hash: string | null, now: number) =>
       db.prepare('UPDATE users SET recovery_hash = ?, recovery_created_at = ? WHERE id = ?').bind(hash, hash ? now : null, userId).run(),
 
-    /** Deletes the account's rows (sessions cascade) and holds its username for 30 days. */
+    /** Deletes the account's rows (sessions and personal routes too) and holds its username for 30 days. */
     deleteUser: (user: UserRow, now: number) =>
       db.batch([
         db.prepare('DELETE FROM sessions WHERE auth0_id = ?').bind(user.auth0_id),
+        // Also removed by ON DELETE CASCADE; explicit so it doesn't depend on foreign keys being on.
+        db.prepare('DELETE FROM personal_routes WHERE owner_id = ?').bind(user.id),
         db.prepare('DELETE FROM users WHERE id = ?').bind(user.id),
         db
           .prepare('INSERT OR REPLACE INTO released_usernames (username, released_by, released_at) VALUES (?, ?, ?)')
@@ -122,6 +124,44 @@ export function accountsDb(db: D1Database) {
     deleteSessionsOfAuth0: (auth0Id: string) => db.prepare('DELETE FROM sessions WHERE auth0_id = ?').bind(auth0Id).run(),
 
     deleteExpiredSessions: (now: number) => db.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now).run(),
+
+    // ---------- personal routes (only ever by owner) ----------
+    countPersonalRoutes: (ownerId: string) =>
+      db
+        .prepare('SELECT COUNT(*) AS n FROM personal_routes WHERE owner_id = ?')
+        .bind(ownerId)
+        .first<{ n: number }>()
+        .then((r) => r?.n ?? 0),
+
+    listPersonalRoutes: (ownerId: string) =>
+      db
+        .prepare('SELECT id, summary, updated_at FROM personal_routes WHERE owner_id = ? ORDER BY updated_at DESC')
+        .bind(ownerId)
+        .all<{ id: string; summary: string; updated_at: number }>()
+        .then((r) => r.results),
+
+    personalRoute: (ownerId: string, id: string) =>
+      db
+        .prepare('SELECT id, summary, data, track, updated_at FROM personal_routes WHERE id = ? AND owner_id = ?')
+        .bind(id, ownerId)
+        .first<{ id: string; summary: string; data: string; track: string; updated_at: number }>(),
+
+    createPersonalRoute: (r: { id: string; ownerId: string; summary: string; data: string; track: string; gpx: string; now: number }) =>
+      db
+        .prepare(
+          'INSERT INTO personal_routes (id, owner_id, summary, data, track, gpx, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(r.id, r.ownerId, r.summary, r.data, r.track, r.gpx, r.now, r.now)
+        .run(),
+
+    updatePersonalRoute: (ownerId: string, id: string, summary: string, data: string, now: number) =>
+      db
+        .prepare('UPDATE personal_routes SET summary = ?, data = ?, updated_at = ? WHERE id = ? AND owner_id = ?')
+        .bind(summary, data, now, id, ownerId)
+        .run(),
+
+    deletePersonalRoute: (ownerId: string, id: string) =>
+      db.prepare('DELETE FROM personal_routes WHERE id = ? AND owner_id = ?').bind(id, ownerId).run(),
 
     // ---------- rate limits ----------
     async countAttempts(kind: string, key: string, now: number): Promise<number> {

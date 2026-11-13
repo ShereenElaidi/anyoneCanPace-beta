@@ -15,11 +15,20 @@ function fakeAuth0() {
   const codes = new Map<string, { sub: string; nonce: string }>();
   const deleted: string[] = [];
   const tickets: string[] = [];
+  const lookups: string[] = [];
   let managementTokensIssued = 0;
   let failManagement = false;
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
-    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    const body = typeof init?.body === 'string' && init.body.startsWith('{') ? JSON.parse(init.body) : {};
+    if (url.host === 'geogratis.gc.ca') {
+      lookups.push(url.toString());
+      return Response.json([{ altitude: 30, vertex: true }, { altitude: 31, vertex: true }]);
+    }
+    if (url.host === 'overpass-api.de') {
+      lookups.push(decodeURIComponent(String(init?.body ?? '')));
+      return Response.json({ elements: [{ tags: { name: 'Rue Clark' }, geometry: [] }] });
+    }
     if (url.host !== DOMAIN) throw new Error(`Unexpected request to ${url.host}`);
     if (url.pathname === '/oauth/token' && body.grant_type === 'authorization_code') {
       const c = codes.get(body.code);
@@ -50,6 +59,7 @@ function fakeAuth0() {
     codes,
     deleted,
     tickets,
+    lookups,
     get managementTokensIssued() {
       return managementTokensIssued;
     },
@@ -358,5 +368,162 @@ describe('deleting the account', () => {
     auth0.failManagement = true;
     expect((await b.del('/api/me', { confirmUsername: 'sam_runs' })).status).toBe(502);
     expect((await b.me()).state).toBe('ready');
+  });
+});
+
+// ---------- personal routes (step 2a) ----------
+
+import { readFileSync } from 'node:fs';
+import { sanitizeGpx } from '../scripts/lib/sanitize-gpx.ts';
+import { LOOKUPS_PER_DAY, PERSONAL_ROUTE_LIMIT } from './handler.ts';
+
+const ROOT = join(import.meta.dirname, '..');
+const fixture = () => ({
+  data: JSON.parse(readFileSync(join(ROOT, 'src/data/routes/pi-day.json'), 'utf8')),
+  track: JSON.parse(readFileSync(join(ROOT, 'src/data/routes/pi-day.geojson'), 'utf8')),
+  gpx: sanitizeGpx(readFileSync(join(ROOT, 'routes/onthegomap-4.7-km-route.gpx'), 'utf8'), 'Pi Day').gpx,
+});
+
+async function upload(b: ReturnType<typeof browser>, body: unknown = fixture()) {
+  const res = await b.post('/api/me/routes', body);
+  return { res, body: (await res.json()) as Record<string, any> };
+}
+
+describe('personal routes', () => {
+  it('saves a route built on the device; only its owner can list, open, change or delete it', async () => {
+    const { b: owner } = await signedUp('auth0|sam', 'sam_runs');
+    const { b: other } = await signedUp('auth0|other', 'other');
+    const { res, body } = await upload(owner);
+    expect(res.status).toBe(201);
+    const id = body.route.id as string;
+    expect(id).not.toBe('pi-day'); // the server picks the id
+    expect(body.route).toMatchObject({ name: 'Pi Day', kind: 'loop', verification: 'unverified' });
+    expect(body.route.outline).toMatch(/^M[\d.]+ [\d.]+L/);
+
+    const list = (await (await owner.get('/api/me/routes')).json()) as { routes: { id: string }[] };
+    expect(list.routes.map((r) => r.id)).toEqual([id]);
+    const opened = (await (await owner.get(`/api/me/routes/${id}`)).json()) as { data: Record<string, any>; track: Record<string, any> };
+    expect(opened.data).toMatchObject({ id, track: `${id}.geojson`, verification: { status: 'unverified' } });
+    expect(opened.track.properties.id).toBe(id);
+
+    // Someone else: an empty list, and "not found" for every way in.
+    expect(((await (await other.get('/api/me/routes')).json()) as { routes: unknown[] }).routes).toEqual([]);
+    expect((await other.get(`/api/me/routes/${id}`)).status).toBe(404);
+    expect((await other.patch(`/api/me/routes/${id}`, { name: 'Mine now' })).status).toBe(404);
+    expect((await other.del(`/api/me/routes/${id}`)).status).toBe(404);
+    expect((await owner.get(`/api/me/routes/${id}`)).status).toBe(200);
+
+    // Signed out: nothing.
+    expect((await browser().get(`/api/me/routes/${id}`)).status).toBe(401);
+
+    expect((await owner.del(`/api/me/routes/${id}`)).status).toBe(200);
+    expect((await owner.get(`/api/me/routes/${id}`)).status).toBe(404);
+  });
+
+  it('ignores the id and review the app sends: always a new id and unverified', async () => {
+    const { b } = await signedUp('auth0|sam', 'sam_runs');
+    const f = fixture();
+    f.data.verification = { status: 'field-verified', reviewer: 'Someone', date: '2026-01-01' };
+    const { body } = await upload(b, f);
+    expect(body.route.verification).toBe('unverified');
+  });
+
+  it('refuses a GPX that still holds more than positions', async () => {
+    const { b } = await signedUp('auth0|sam', 'sam_runs');
+    const f = fixture();
+    f.gpx = f.gpx.replace('<trkseg>', '<trkseg><time>2026-11-12T10:00:00Z</time>');
+    const { res, body } = await upload(b, f);
+    expect(res.status).toBe(400);
+    expect(body.problems.join(' ')).toMatch(/time/);
+  });
+
+  it('refuses unknown fields, a track that does not match, and routes over 50 km', async () => {
+    const { b } = await signedUp('auth0|sam', 'sam_runs');
+    const f = fixture();
+    f.data.secret = 'x';
+    f.data.stats.distanceM = 60_000;
+    f.data.bbox = [0, 0, 1, 1];
+    const { res, body } = await upload(b, f);
+    expect(res.status).toBe(400);
+    const problems = body.problems.join(' | ');
+    expect(problems).toMatch(/unknown field "secret"/);
+    expect(problems).toMatch(/50 km/);
+    expect(problems).toMatch(/doesn’t match its track/);
+    expect(problems).toMatch(/bbox/);
+  });
+
+  it('applies the route editor’s rules to edits; the reviewer is always the signed-in person', async () => {
+    const { b } = await signedUp('auth0|sam', 'sam_runs', 'Sam');
+    const { body } = await upload(b);
+    const id = body.route.id as string;
+
+    const renamed = await b.patch(`/api/me/routes/${id}`, { name: 'Pi Day long', place: 'Plateau' });
+    expect(((await renamed.json()) as { summary: { name: string } }).summary.name).toBe('Pi Day long');
+
+    expect((await b.patch(`/api/me/routes/${id}`, { verification: { status: 'desk-reviewed', reviewer: 'X', date: '2026-01-01' } })).status).toBe(400);
+    // The app can't name the reviewer.
+    expect((await b.patch(`/api/me/routes/${id}`, { review: 'desk-reviewed', reviewer: 'Someone else' })).status).toBe(400);
+    const reviewed = (await (await b.patch(`/api/me/routes/${id}`, { review: 'desk-reviewed' })).json()) as {
+      data: { verification: Record<string, string> };
+    };
+    expect(reviewed.data.verification).toMatchObject({ status: 'desk-reviewed', reviewer: 'Sam (@sam_runs)' });
+    expect(reviewed.data.verification.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    const opened = (await (await b.get(`/api/me/routes/${id}`)).json()) as { data: { turns: { atM: number }[] } };
+    const turns = opened.data.turns.slice(1);
+    // A review and a turn change in the same save: refused (the review has to be of the saved turns).
+    expect((await b.patch(`/api/me/routes/${id}`, { turns, review: 'field-verified' })).status).toBe(400);
+    // Changing the turns resets the review.
+    const changed = (await (await b.patch(`/api/me/routes/${id}`, { turns })).json()) as { verificationReset: boolean; summary: { verification: string } };
+    expect(changed.verificationReset).toBe(true);
+    expect(changed.summary.verification).toBe('unverified');
+    // Generated fields can't be edited.
+    expect((await b.patch(`/api/me/routes/${id}`, { stats: { distanceM: 1 } })).status).toBe(400);
+  });
+
+  it(`keeps a runner to ${PERSONAL_ROUTE_LIMIT.runner} routes`, async () => {
+    const { b } = await signedUp('auth0|sam', 'sam_runs');
+    for (let i = 0; i < PERSONAL_ROUTE_LIMIT.runner; i++) expect((await upload(b)).res.status).toBe(201);
+    const { res, body } = await upload(b);
+    expect(res.status).toBe(409);
+    expect(body.message).toMatch(/25/);
+  });
+
+  it('deleting the account deletes its personal routes', async () => {
+    const { b } = await signedUp('auth0|sam', 'sam_runs');
+    await upload(b);
+    await b.del('/api/me', { confirmUsername: 'sam_runs' });
+    const left = await env.DB.prepare('SELECT COUNT(*) AS n FROM personal_routes').first<{ n: number }>();
+    expect(left?.n).toBe(0);
+  });
+});
+
+describe('lookups for building a route', () => {
+  it('passes an elevation batch to GeoGratis, built from checked numbers', async () => {
+    const { b } = await signedUp('auth0|sam', 'sam_runs');
+    const res = await b.post('/api/lookup/elevation', { points: [[45.51, -73.57], [45.52, -73.56]] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([{ altitude: 30, vertex: true }, { altitude: 31, vertex: true }]);
+    expect(decodeURIComponent(auth0.lookups[0])).toContain('LINESTRING(-73.57 45.51,-73.56 45.52)');
+    expect((await b.post('/api/lookup/elevation', { points: Array.from({ length: 101 }, () => [45, -73]) })).status).toBe(400);
+    expect((await b.post('/api/lookup/elevation', { points: [['45; drop', -73]] })).status).toBe(400);
+  });
+
+  it('asks Overpass only for named streets within 40 m of the route line', async () => {
+    const { b } = await signedUp('auth0|sam', 'sam_runs');
+    const res = await b.post('/api/lookup/streets', { line: [[45.51, -73.57], [45.52, -73.56]] });
+    expect(res.status).toBe(200);
+    expect(auth0.lookups[0]).toContain('way["highway"]["name"](around:40,45.51,-73.57,45.52,-73.56);out geom;');
+  });
+
+  it('needs a finished account, and stops after the daily limit', async () => {
+    expect((await browser().post('/api/lookup/streets', { line: [[45, -73], [45.1, -73]] })).status).toBe(401);
+    const half = browser();
+    await half.signIn('auth0|new');
+    expect((await half.post('/api/lookup/streets', { line: [[45, -73], [45.1, -73]] })).status).toBe(403);
+
+    const { b } = await signedUp('auth0|sam', 'sam_runs');
+    for (let i = 0; i < LOOKUPS_PER_DAY.streets; i++) await b.post('/api/lookup/streets', { line: [[45, -73], [45.1, -73]] });
+    expect((await b.post('/api/lookup/streets', { line: [[45, -73], [45.1, -73]] })).status).toBe(429);
   });
 });

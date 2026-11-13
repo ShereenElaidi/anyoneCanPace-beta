@@ -17,6 +17,9 @@ import {
 import { hmac, newRecoveryCode, normalizeRecoveryCode, randomToken, sameString, sha256 } from './crypto.ts';
 import { accountsDb, type AccountsDb, type SessionRow, type UserRow } from './db.ts';
 import type { Env } from './types.ts';
+import { elevationRequest, lookupElevation, lookupStreets, streetsQuery } from './lookups.ts';
+import { editPersonalRoute, montrealDate, prepareUpload, summaryOf } from './routes.ts';
+import type { RouteData, TrackFeature } from '../src/nav/types.ts';
 import {
   cleanDisplayName,
   displayNameProblem,
@@ -29,6 +32,10 @@ export const SESSION_DAYS = 60;
 /** Recovery-code tries per username per day (spec §5), and per network address. */
 export const RECOVERY_TRIES_PER_DAY = 3;
 export const RECOVERY_TRIES_PER_ADDRESS = 10;
+/** Personal routes per account (spec §10). The admin has no limit. */
+export const PERSONAL_ROUTE_LIMIT = { runner: 25, pacer: 50 } as const;
+/** Lookups per account per day: enough for a few routes a day (a 50 km route needs ~50 elevation batches). */
+export const LOOKUPS_PER_DAY = { elevation: 300, streets: 60 } as const;
 const SESSION_COOKIE = 'acp_session';
 const TX_COOKIE = 'acp_signin';
 
@@ -138,6 +145,14 @@ function publicUser(user: UserRow, env: Env) {
   };
 }
 
+/** Counts this use and says whether it's still within the day's limit (keys are hashed, rows kept a day). */
+async function underDailyLimit(db: AccountsDb, env: Env, kind: string, userId: string, limit: number, now: number): Promise<boolean> {
+  const key = await hmac(env.RECOVERY_PEPPER, `${kind}:${userId}`);
+  if ((await db.countAttempts(kind, key, now)) >= limit) return false;
+  await db.addAttempt(kind, key, now);
+  return true;
+}
+
 // ---------- the API ----------
 
 export async function handle(request: Request, env: Env, now = Date.now()): Promise<Response> {
@@ -237,7 +252,7 @@ export async function handle(request: Request, env: Env, now = Date.now()): Prom
     }
 
     // ----- everything below needs a session -----
-    if (!path.startsWith('/api/me')) return problem(404, 'not-found', 'Not found.');
+    if (!path.startsWith('/api/me') && !path.startsWith('/api/lookup/')) return problem(404, 'not-found', 'Not found.');
     const current = await currentSession(request, db, now);
 
     if (path === '/api/me' && method === 'GET') {
@@ -329,6 +344,78 @@ export async function handle(request: Request, env: Env, now = Date.now()): Prom
           current: s.id === current.session.id,
         })),
       });
+    }
+
+    // ----- personal routes: only ever the signed-in person's own -----
+    const isAdmin = !!env.ADMIN_AUTH0_ID && user.auth0_id === env.ADMIN_AUTH0_ID;
+    if (path === '/api/me/routes' && method === 'GET') {
+      const rows = await db.listPersonalRoutes(user.id);
+      return json({ routes: rows.map((r) => ({ ...JSON.parse(r.summary), updatedAt: r.updated_at })) });
+    }
+
+    if (path === '/api/me/routes' && method === 'POST') {
+      const limit = isAdmin ? Infinity : PERSONAL_ROUTE_LIMIT[user.role];
+      if ((await db.countPersonalRoutes(user.id)) >= limit) {
+        return problem(409, 'route-limit', `You can keep up to ${limit} personal routes. Delete one to add another.`);
+      }
+      const id = randomToken(12);
+      const result = prepareUpload(await readJson(request), id, montrealDate(now));
+      if (!result.ok) return problem(400, 'invalid-route', 'This route can’t be saved.', { problems: result.errors.slice(0, 20) });
+      const { route } = result;
+      await db.createPersonalRoute({
+        id,
+        ownerId: user.id,
+        summary: JSON.stringify(route.summary),
+        data: JSON.stringify(route.data),
+        track: JSON.stringify(route.track),
+        gpx: route.gpx,
+        now,
+      });
+      return json({ route: { ...route.summary, updatedAt: now } }, 201);
+    }
+
+    const routeMatch = /^\/api\/me\/routes\/([^/]+)$/.exec(path);
+    if (routeMatch) {
+      const routeId = decodeURIComponent(routeMatch[1]);
+      // Someone else's route, or none: "not found" either way (spec §9).
+      const row = await db.personalRoute(user.id, routeId);
+      if (!row) return problem(404, 'not-found', 'Not found.');
+      if (method === 'GET') return json({ data: JSON.parse(row.data), track: JSON.parse(row.track), updatedAt: row.updated_at });
+      if (method === 'DELETE') {
+        await db.deletePersonalRoute(user.id, routeId);
+        return json({ ok: true });
+      }
+      if (method === 'PATCH') {
+        const existing = JSON.parse(row.data) as RouteData;
+        const result = editPersonalRoute(existing, await readJson(request), {
+          today: montrealDate(now),
+          reviewer: `${user.display_name} (@${user.username})`,
+        });
+        if (!result.ok) return problem(400, 'invalid-edit', 'These changes can’t be saved.', { problems: result.errors.slice(0, 20) });
+        const track = JSON.parse(row.track) as TrackFeature;
+        const summary = summaryOf(result.data, track.geometry.coordinates);
+        await db.updatePersonalRoute(user.id, routeId, JSON.stringify(summary), JSON.stringify(result.data), now);
+        return json({ data: result.data, summary: { ...summary, updatedAt: now }, verificationReset: result.verificationReset });
+      }
+    }
+
+    // ----- lookups for a route being built on the device -----
+    if (path === '/api/lookup/elevation' && method === 'POST') {
+      const url = elevationRequest((await readJson(request)).points);
+      if (!url) return problem(400, 'invalid', 'Send up to 100 [latitude, longitude] points.');
+      if (!(await underDailyLimit(db, env, 'lookup-elevation', user.id, LOOKUPS_PER_DAY.elevation, now))) {
+        return problem(429, 'too-many-lookups', 'That’s enough route building for today. Try again tomorrow.');
+      }
+      return lookupElevation(url);
+    }
+
+    if (path === '/api/lookup/streets' && method === 'POST') {
+      const query = streetsQuery((await readJson(request)).line);
+      if (!query) return problem(400, 'invalid', 'Send the route line as 2 to 1000 [latitude, longitude] points.');
+      if (!(await underDailyLimit(db, env, 'lookup-streets', user.id, LOOKUPS_PER_DAY.streets, now))) {
+        return problem(429, 'too-many-lookups', 'That’s enough route building for today. Try again tomorrow.');
+      }
+      return lookupStreets(query);
     }
 
     const sessionMatch = /^\/api\/me\/sessions\/([^/]+)$/.exec(path);

@@ -16,5 +16,7 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["scripts"]
+  "include": ["scripts"],
+  // Dev-server plugins are checked by tsconfig.node.json (they import app and server code).
+  "exclude": ["scripts/vite"]
 }
