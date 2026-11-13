@@ -263,7 +263,7 @@ Optional accounts so pacers and runners can keep their own routes across devices
 
 `npm run dev` serves the same API under `/api/` (`scripts/vite/accountsApi.ts`), on a local SQLite file (`.cache/accounts-dev.sqlite`) standing in for D1. It needs `.dev.vars` (git-ignored; copy `.dev.vars.example`) with the settings of a **development** Auth0 tenant, never the live one:
 
-1. Auth0 → Applications → Create Application → **Regular Web Applications**. Allowed Callback URLs `http://localhost:5173/api/auth/callback`, Allowed Logout URLs `http://localhost:5173/anyoneCanPace/`. Its Client ID and Secret go in `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET`.
+1. Auth0 → Applications → Create Application → **Regular Web Applications**. Allowed Callback URLs `http://localhost:5173/api/auth/callback`, Allowed Logout URLs `http://localhost:5173/anyoneCanPace/`, Credentials → Client Secret (Post), Connections → only the development user database (`local-dev-users`; Google off). Its Client ID and Secret go in `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET`. Locally, after a recovery-code password reset, Auth0 doesn't send you back: return to the app yourself (see below).
 2. Auth0 → Applications → Create Application → **Machine to Machine**, authorised for the **Auth0 Management API** with `read:users`, `delete:users` and `create:user_tickets`. Its ID and Secret go in `AUTH0_M2M_CLIENT_ID` / `AUTH0_M2M_CLIENT_SECRET`.
 3. `RECOVERY_PEPPER`: any long random string. `ADMIN_AUTH0_ID`: your own Auth0 user ID, once you've signed up (optional).
 
@@ -271,7 +271,7 @@ Without `.dev.vars` the account screen says accounts aren't available; the rest 
 
 ### On Cloudflare (not done yet)
 
-Each Pages project (beta first) needs a D1 database bound as `DB` (migrations applied with `wrangler d1 migrations apply`), the settings above as environment variables (secrets encrypted), `APP_BASE=/`, and `ACCOUNTS=1` in its build variables. Live and beta use separate Auth0 tenants and databases.
+Each Pages project (beta first) needs its sign-in app's **Application Login URI** set to `https://<site>/api/auth/login` (Auth0 then offers "Back to AnyoneCanPace" after a recovery-code password reset; Auth0 ignores return addresses on its current pages and only accepts HTTPS here), a D1 database bound as `DB` (migrations applied with `wrangler d1 migrations apply`), the settings above as environment variables (secrets encrypted), `APP_BASE=/`, and `ACCOUNTS=1` in its build variables. Live and beta use separate Auth0 tenants and databases.
 
 ## Tech stack
 

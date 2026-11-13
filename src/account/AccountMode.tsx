@@ -29,7 +29,6 @@ interface Props {
 const RETURN_MESSAGES: Record<string, string> = {
   'signin-failed': 'Sign-in didn’t finish. Try again.',
   disabled: 'This account is disabled.',
-  'password-set': 'Password changed. Sign in with your new password.',
 };
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong. Try again in a moment.');
@@ -171,7 +170,10 @@ function RecoverView({ onBack }: { onBack: () => void }) {
   return (
     <form className="acct-card" onSubmit={(e) => void submit(e)}>
       <h2 className="acct__h2">Use your recovery code</h2>
-      <p>You’ll set a new password right away. Every device you’re signed in on is signed out, and you get a new code.</p>
+      <p>
+        You’ll set a new password on Auth0’s page. Every device you’re signed in on is signed out. Then come back to
+        AnyoneCanPace, sign in with the new password, and save the new recovery code it gives you.
+      </p>
       <label className="acct-field">
         <span>Username</span>
         <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} required />

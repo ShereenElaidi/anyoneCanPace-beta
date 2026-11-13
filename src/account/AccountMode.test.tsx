@@ -125,8 +125,8 @@ describe('account screen', () => {
 
   it('shows the message the server sent back with', async () => {
     mockApi(() => ({ body: { state: 'signed-out' } }));
-    render(<AccountMode onSwitchMode={() => {}} returnStatus="password-set" />);
-    expect(await screen.findByText('Password changed. Sign in with your new password.')).toBeTruthy();
+    render(<AccountMode onSwitchMode={() => {}} returnStatus="signin-failed" />);
+    expect(await screen.findByText('Sign-in didn’t finish. Try again.')).toBeTruthy();
   });
 });
 

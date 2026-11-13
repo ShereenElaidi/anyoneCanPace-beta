@@ -34,6 +34,8 @@ function fakeAuth0() {
     }
     if (failManagement) return new Response('{}', { status: 503 });
     if (url.pathname === '/api/v2/tickets/password-change') {
+      // Auth0 rejects result_url together with client_id; the app is named by client_id.
+      if (body.result_url || body.client_id !== 'web-client') return new Response('{}', { status: 400 });
       tickets.push(body.user_id);
       return Response.json({ ticket: `https://${DOMAIN}/lo/reset?ticket=t1` });
     }

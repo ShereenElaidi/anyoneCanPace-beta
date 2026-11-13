@@ -133,11 +133,18 @@ async function management(env: Env, db: AccountsDb, now: number, method: string,
   return res.status === 204 ? null : res.json();
 }
 
-/** A one-time "set a new password" link, returned instead of emailed. */
-export async function passwordResetLink(env: Env, db: AccountsDb, now: number, auth0Id: string, returnTo: string): Promise<string> {
+/**
+ * A one-time "set a new password" link, returned instead of emailed.
+ * Names our sign-in app (`client_id`) rather than a return address: Auth0's
+ * current sign-in pages ignore `result_url` (it only works with "Classic"
+ * pages) and instead offer "Back to <app>", which opens the app's
+ * Application Login URI (`https://<site>/api/auth/login`, set in Auth0; it
+ * must be HTTPS, so not on localhost).
+ */
+export async function passwordResetLink(env: Env, db: AccountsDb, now: number, auth0Id: string): Promise<string> {
   const ticket = (await management(env, db, now, 'POST', 'tickets/password-change', {
     user_id: auth0Id,
-    result_url: returnTo,
+    client_id: env.AUTH0_CLIENT_ID,
     ttl_sec: 15 * 60,
   })) as { ticket: string };
   return ticket.ticket;

@@ -1,7 +1,7 @@
 /**
  * `?account` in the address opens the account screen: the server sends people
- * back there after Auth0 (`?account`, `?account=signin-failed`, `?account=disabled`,
- * `?account=password-set`). Tiny and dependency-free so the first-load bundle can read it.
+ * back there after Auth0 (`?account`, `?account=signin-failed`, `?account=disabled`).
+ * Tiny and dependency-free so the first-load bundle can read it.
  */
 export const ACCOUNT_PARAM = 'account';
 

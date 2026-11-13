@@ -218,7 +218,7 @@ export async function handle(request: Request, env: Env, now = Date.now()): Prom
           triesLeft: RECOVERY_TRIES_PER_DAY - usedByUser - 1,
         });
       }
-      const ticketUrl = await passwordResetLink(env, db, now, user.auth0_id, `${url.origin}${appBase(env)}?account=password-set`);
+      const ticketUrl = await passwordResetLink(env, db, now, user.auth0_id);
       // The code is used up (a new one is shown at the next sign-in) and every device is signed out.
       await db.setRecoveryHash(user.id, null, now);
       await db.deleteSessionsOfAuth0(user.auth0_id);
