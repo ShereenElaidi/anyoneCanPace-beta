@@ -479,6 +479,18 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
    - **First test, before anything else:** sign in through Auth0 from the
      *installed* iPhone app and confirm the app comes back signed in. If it fails,
      the fallback (sign-in from our own screen via Auth0's API) changes §5.
+     **Passed 2026-11-13** (iPhone, Safari "Add to Home Screen", throwaway test
+     server with the §5 design: server-handled redirect, own HttpOnly cookie,
+     service worker skipping `/api/`):
+     - Sign-in from the installed app went to Auth0's page and came back **into
+       the installed app** (not a Safari view), with the sign-in cookie set
+       before leaving still present. Repeated five times, all OK.
+     - Still signed in after swiping the app closed and reopening it.
+     - Sign-out (ours + Auth0's logout redirect) came back to the installed app
+       signed out; the next sign-in showed Auth0's page again.
+     - Auth0's token reported no sign-in method (`amr` absent) for password
+       sign-ins. Passkeys weren't switched on for the tenant, so passkey
+       detection is still unchecked.
 1. Accounts: sign-up, sign-in, sessions, recovery code, display name, delete account.
 2. Personal library: upload → check turns → save → follow, offline cache.
    Cut the Québec map, check its size, upload to R2, and switch routes to
