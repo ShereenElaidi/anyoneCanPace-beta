@@ -2,6 +2,7 @@
  * The app's side of the accounts API (server/handler.ts). Same origin, so the
  * HttpOnly session cookie goes along by itself; the app never sees it.
  */
+import type { RouteSummary } from '../nav/types';
 
 export interface AccountUser {
   username: string;
@@ -90,3 +91,16 @@ export const signOut = () => call<{ logoutUrl: string }>('POST', '/api/auth/logo
 export const deleteAccount = (confirmUsername: string) => call<{ logoutUrl: string }>('DELETE', '/api/me', { confirmUsername });
 
 export const recover = (username: string, code: string) => call<{ ticketUrl: string }>('POST', '/api/auth/recover', { username, code });
+
+// ---------- personal routes ----------
+
+export type MyRouteSummary = RouteSummary & { updatedAt: number };
+
+export const listMyRoutes = () => call<{ routes: MyRouteSummary[] }>('GET', '/api/me/routes');
+
+export const saveMyRoute = (body: unknown) => call<{ route: MyRouteSummary }>('POST', '/api/me/routes', body);
+
+export const deleteMyRoute = (id: string) => call<{ ok: true }>('DELETE', `/api/me/routes/${encodeURIComponent(id)}`);
+
+/** For the route builder's lookups (src/myRoutes/build.ts): throws ApiError, whose status tells it whether to retry. */
+export const postApi = (path: string, body: unknown) => call<unknown>('POST', path, body);

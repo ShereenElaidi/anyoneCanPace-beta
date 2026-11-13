@@ -6,7 +6,9 @@
  * draft, kept on the device until it's saved (drafts.ts).
  */
 import { buildRoute, elevationsFromProfile, overpassFailure, streetsBox, streetsFromOverpass, type RouteLookups } from '../../scripts/lib/build-route.ts';
+import { parseGpx } from '../../scripts/lib/process-route.ts';
 import { sanitizeGpx } from '../../scripts/lib/sanitize-gpx.ts';
+import { distanceM } from '../nav/geo';
 import type { TurnReviewEntry } from '../../scripts/lib/turns.ts';
 import type { RouteData, TrackFeature } from '../nav/types';
 
@@ -33,6 +35,43 @@ export interface Draft {
   startNote: string;
   /** Street names couldn't be looked up: the turns have none, to fill in while checking them. */
   streetsMissing: boolean;
+  /** Recorded on a run (timestamps on its points): GPS wobble can look like turns. */
+  recorded: boolean;
+  /** Metres trimmed off the start and the end before building. */
+  trimmed: { startM: number; endM: number };
+}
+
+/** Trim choices offered (metres): a GPX usually starts and ends at home. */
+export const TRIM_CHOICES = [0, 100, 200, 300, 500] as const;
+
+type Point = { lat: number; lon: number; ele?: number };
+
+/**
+ * Drops the first `startM` and last `endM` metres of a track (at whole
+ * points). Throws if less than 200 m would be left.
+ */
+export function trimPoints(points: Point[], startM: number, endM: number): Point[] {
+  if (!startM && !endM) return points;
+  const along = [0];
+  for (let i = 1; i < points.length; i++) along.push(along[i - 1] + distanceM(points[i - 1], points[i]));
+  const total = along[along.length - 1];
+  const first = along.findIndex((d) => d >= startM);
+  let last = along.length - 1;
+  while (last > 0 && total - along[last] < endM) last--;
+  if (first < 0 || last - first < 1 || along[last] - along[first] < 200) {
+    throw new Error('Trimming that much leaves almost nothing of the route. Trim less.');
+  }
+  return points.slice(first, last + 1);
+}
+
+/** The cleaned GPX with its start and end trimmed (still positions only). */
+export function trimGpx(cleanedGpx: string, name: string, startM: number, endM: number): string {
+  if (!startM && !endM) return cleanedGpx;
+  const points = trimPoints(parseGpx(cleanedGpx).points, startM, endM);
+  const trkpts = points
+    .map((p) => (p.ele === undefined ? `<trkpt lat="${p.lat}" lon="${p.lon}"/>` : `<trkpt lat="${p.lat}" lon="${p.lon}"><ele>${p.ele}</ele></trkpt>`))
+    .join('');
+  return sanitizeGpx(`<gpx><trk><trkseg>${trkpts}</trkseg></trk></gpx>`, name).gpx;
 }
 
 export type BuildStep = 'cleaning' | 'elevation' | 'streets' | 'turns';
@@ -113,27 +152,32 @@ export async function buildDraft(
   gpxText: string,
   name: string,
   post: Post,
-  opts: LookupOptions & { now?: number } = {},
+  opts: LookupOptions & { now?: number; trim?: { startM: number; endM: number } } = {},
 ): Promise<Draft> {
   if (new TextEncoder().encode(gpxText).length > MAX_GPX_BYTES) throw new Error('This GPX is larger than 5 MB.');
   const onStep = opts.onStep ?? (() => {});
   onStep('cleaning');
   const cleaned = sanitizeGpx(gpxText, name);
+  const trimmed = opts.trim ?? { startM: 0, endM: 0 };
+  const gpx = trimGpx(cleaned.gpx, name, trimmed.startM, trimmed.endM);
   const id = localId();
   const lookups = serverLookups(post, opts);
-  const built = await buildRoute({ id, name, gpx: cleaned.gpx }, lookups);
+  const built = await buildRoute({ id, name, gpx }, lookups);
   onStep('turns');
   return {
     id,
     createdAt: opts.now ?? Date.now(),
     removed: cleaned.removed,
-    gpx: cleaned.gpx,
+    gpx,
     data: built.data,
     track: built.feature,
     outline: built.outline,
     review: built.analysis.review,
     startNote: built.analysis.startNote,
     streetsMissing: lookups.state.streetsMissing,
+    // A recorded run has a timestamp on (nearly) every point; a drawn route has at most one, in its metadata.
+    recorded: (gpxText.match(/<time\b/g)?.length ?? 0) >= 10,
+    trimmed,
   };
 }
 

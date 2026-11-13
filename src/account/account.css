@@ -150,3 +150,86 @@
 .acct-list li:first-child {
   border-top: 0;
 }
+
+.acct__h3 {
+  margin: 8px 0 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.acct-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Adding a route (src/myRoutes/AddRoute.tsx) */
+.add-route__steps {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #5f5e5a;
+}
+
+.add-route__steps .is-current {
+  color: var(--navy);
+  text-decoration: underline;
+}
+
+.add-route__form,
+.add-route__turns {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  align-self: stretch;
+}
+
+.add-route__form > .btn--small,
+.add-route__turns > .btn--small {
+  align-self: flex-start;
+}
+
+.add-route__trim,
+.add-route__tags {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 2px solid rgba(44, 44, 42, 0.3);
+  border-radius: 12px;
+}
+
+.add-route__trim legend,
+.add-route__tags legend {
+  padding: 0 4px;
+  font-weight: 800;
+}
+
+.add-route__progress {
+  padding: 24px 0;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.acct-field select,
+.acct-field textarea {
+  min-height: 48px;
+  padding: 8px 12px;
+  border: var(--line) solid var(--asphalt);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--asphalt);
+  font: inherit;
+  font-weight: 400;
+}
+
+.acct-field input[type='file'] {
+  padding: 10px;
+}

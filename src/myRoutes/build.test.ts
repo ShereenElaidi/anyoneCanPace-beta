@@ -60,6 +60,7 @@ describe('building a personal route on the device', () => {
     const draft = await buildDraft(raw, 'Loop', fakeServer().post);
     expect(draft.gpx).not.toMatch(/Home St|<time>|<hr>|<extensions>/);
     expect(draft.removed.join(' ')).toMatch(/timestamp/);
+    expect(draft.recorded).toBe(false); // one timestamp is metadata, not a recording
   });
 
   it('uses the GPX’s own elevation when every point has it (no elevation lookups)', async () => {

@@ -514,6 +514,15 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
      2d my routes in the library + offline + beta deploy, 2e Québec map on R2.
      **2a built 2026-11-12** (`server/routes.ts`, `server/lookups.ts`).
      **2b built 2026-11-12** (`scripts/lib/build-route.ts`, `src/myRoutes/`).
+     **2c built 2026-11-12** (`src/myRoutes/AddRoute.tsx`, "My routes" on the
+     account screen): choose a GPX → trim 0–500 m from the start and end
+     (before building, so the trimmed part is never looked up or saved) →
+     build with progress → check turns (the route editor's `TurnEditor`, which
+     now ships in this lazy chunk) → name, place, description, tags, notes →
+     save. Drafts are kept on the device at every step ("finish later") and
+     cleared on sign-out and account deletion. Tried in the browser with the
+     real GeoGratis and Overpass through the local API: Pi Day built, saved and
+     listed.
    - **Beta set up 2026-11-12:** D1 `anyonecanpace-beta` (tables from
      `migrations/0001_accounts.sql`, recorded in `d1_migrations`), Pages project
      settings and `DB` binding, `feature/accounts` deployed. R2 not needed until
