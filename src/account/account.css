@@ -1,0 +1,152 @@
+/* Account screen (lazy-loaded with AccountMode). */
+
+.acct__title {
+  margin: 0;
+  font-size: clamp(1.4rem, 6vw, 1.8rem);
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.acct__h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.acct-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 16px;
+  border: var(--line) solid var(--asphalt);
+  border-radius: var(--radius);
+  background: var(--white);
+}
+
+.acct-card p {
+  margin: 0;
+}
+
+.acct-card .btn--block {
+  align-self: stretch;
+}
+
+.acct-card--danger {
+  border-color: #a3261b;
+}
+
+.acct-gap {
+  margin-top: 4px;
+}
+
+.acct-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: stretch;
+  font-weight: 700;
+}
+
+.acct-field input {
+  min-height: 48px;
+  padding: 8px 12px;
+  border: var(--line) solid var(--asphalt);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--asphalt);
+  font: inherit;
+  font-weight: 400;
+}
+
+.acct-field input:focus-visible,
+.acct-check input:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.acct-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-weight: 700;
+}
+
+.acct-check input {
+  width: 24px;
+  height: 24px;
+  accent-color: var(--navy);
+}
+
+.acct-small {
+  font-size: 0.85rem;
+}
+
+.acct-small--bad,
+.acct-error {
+  color: #a3261b;
+  font-weight: 700;
+}
+
+.acct-msg {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: var(--line) solid var(--navy);
+  border-radius: 10px;
+  background: var(--white);
+  font-weight: 700;
+}
+
+.acct-card .acct-msg {
+  margin: 0;
+}
+
+.acct-code {
+  align-self: stretch;
+  padding: 14px 8px;
+  border: var(--line) dashed var(--asphalt);
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: clamp(1.1rem, 5.5vw, 1.5rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+.acct-who {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  align-items: baseline;
+}
+
+.acct-who__name {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.acct-list {
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acct-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(44, 44, 42, 0.2);
+}
+
+.acct-list li:first-child {
+  border-top: 0;
+}

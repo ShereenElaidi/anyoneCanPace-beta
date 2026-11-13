@@ -72,6 +72,10 @@ console.log(
 const DEV_ONLY = [
   { what: 'route editor', text: '__route-editor' },
   { what: 'route editor', text: 'Route editor failed to load' },
+  // Server code (server/, functions/) runs on Cloudflare, never in the app.
+  { what: 'accounts server', text: 'acp_session' },
+  { what: 'accounts server', text: 'RECOVERY_PEPPER' },
+  { what: 'local accounts API', text: 'node:sqlite' },
 ];
 for (const f of readdirSync(join(DIST, 'assets'))) {
   if (!/\.m?js$/.test(f)) continue;
@@ -86,4 +90,4 @@ for (const f of readdirSync(join(DIST, 'assets'))) {
 
 if (failed) process.exit(1);
 console.log('\n✓ Map libraries are not in the first-load bundle.');
-console.log('✓ No dev-only tools (route editor) in the build.');
+console.log('✓ No dev-only tools (route editor) or server code in the build.');

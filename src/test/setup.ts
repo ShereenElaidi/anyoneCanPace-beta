@@ -3,5 +3,6 @@ import { cleanup } from '@testing-library/react';
 
 afterEach(() => {
   cleanup();
-  localStorage.clear();
+  // Server tests run in the Node environment, which has no page storage.
+  if (typeof window !== 'undefined') localStorage.clear();
 });

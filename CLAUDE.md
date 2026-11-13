@@ -1,6 +1,6 @@
 # AnyoneCanPace
 
-Mobile-first PWA for volunteer pacers (AnyoneCanRun by Les Stooopids). React 19 + TypeScript + Vite 8 + plain CSS + vite-plugin-pwa. No backend, accounts, analytics or tracking.
+Mobile-first PWA for volunteer pacers (AnyoneCanRun by Les Stooopids). React 19 + TypeScript + Vite 8 + plain CSS + vite-plugin-pwa. No analytics or tracking. Optional accounts are being built (`design/backend-v1-spec.md`, README "Accounts"): off on live until launch.
 The app always opens on the mode picker (`src/Root.tsx`, no mode is remembered; the exceptions are `?sunday`, `src/lib/sundayLink.ts`, which opens Stooopid Sunday and then cleans the address, and a shared route link `?route=<id>` from SHARE ROUTE on a route page, `src/lib/routeLink.ts`, which opens that route's page; every route page keeps `?route=<id>` in the address while open, so it can be copied from the address bar and a reload stays on it; the library has none), in this order: **Stooopid Sunday Dashboard** (`src/dashboard/`, lazy-loaded; Sunday run first, then "Running another time?", then the story), **ACR Run/Walk Timer** (`App.tsx`), **Route Library** (`src/sixk/`, lazy-loaded).
 Live: https://anyonecanpace.pages.dev/ · Beta: https://anyonecanpacebeta.pages.dev/ (both Cloudflare Pages; GitHub Pages is off so no address leads to the owner's personal github.io site) · Full details, limitations and the **V2 To-Do List** are in README.md.
 
@@ -36,6 +36,11 @@ Live: https://anyonecanpace.pages.dev/ · Beta: https://anyonecanpacebeta.pages.
 - Reset/End stays in the Settings sheet behind a two-tap confirm, away from the main controls.
 - Accessibility: touch targets ≥ 44 px, phase text never conveyed by colour alone, announce phase/pause changes (not every second), respect reduced motion.
 - No new heavy dependencies (no state libraries, UI kits or analytics). **Exception:** MapLibre GL JS and the PMTiles reader, for the 6K mode only, and only lazy-loaded. `scripts/check-bundle.ts` fails the build if either reaches the first-load bundle. Build-time-only dev dependencies for scripts are fine if justified.
+
+## Accounts rules (design/backend-v1-spec.md)
+- Server code: `server/` (`handler.ts` API, `db.ts` the only SQL, prepared statements only, `auth0.ts`), Pages Function `functions/api/[[path]].ts`, D1 migrations in `migrations/`. Local dev runs the same handler through `scripts/vite/accountsApi.ts` on `node:sqlite` (`server/dev/sqliteD1.ts`) with `.dev.vars` (dev Auth0 tenant only). Tests: `server/handler.test.ts`.
+- Accounts UI only where `__ACCOUNTS__` (dev server or `ACCOUNTS=1`); the YOUR ACCOUNT entry is only on the home screen, never mid-run. The service worker never answers `/api/` (`navigateFallbackDenylist`).
+- Someone else's data is "not found", never "forbidden". Writes check `Origin`. Never log tokens, emails or recovery codes. Store no email in D1. Admin = `ADMIN_AUTH0_ID` only, never a database role.
 
 ## Route rules
 - Progress is forward-only and matched in a window around current progress (it grows during GPS gaps). Never snap to the globally nearest point: routes overlap and a loop's start and finish are close. Off route, rejoining beyond the window (`tryRejoinAhead`/`rejoinOptions`) is ahead-only, needs the direction of travel to match exactly one leg, and never assumes the finish stretch; otherwise **JOIN AT** decides. The off-route banner's distance and direction point to the closest route still ahead (from progress on; beyond the next km, not past 90 % until 90 % is covered), never behind.

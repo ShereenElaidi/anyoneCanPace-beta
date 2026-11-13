@@ -898,6 +898,12 @@ body:has(.app--paper) {
   text-align: center;
 }
 
+.picker__account {
+  display: flex;
+  margin: 12px auto 0;
+}
+
+
 .loading {
   padding: 40px 16px;
   text-align: center;

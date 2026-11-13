@@ -7,6 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { saveMeetingMap } from './scripts/vite/saveMeetingMap';
 import { routeEditorPlugin } from './src/dev/routeEditor/server/plugin';
 import { saveStorySheet } from './scripts/vite/saveStorySheet';
+import { accountsApi } from './scripts/vite/accountsApi';
 
 /**
  * GitHub Pages serves a project site at https://<owner>.github.io/<repo>/,
@@ -73,9 +74,14 @@ const https =
     : undefined;
 const allowedHosts = ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.app'];
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   base,
-  define: { __BETA__: JSON.stringify(isBeta), __BUILD_ID__: JSON.stringify(buildId()) },
+  define: {
+    __BETA__: JSON.stringify(isBeta),
+    __BUILD_ID__: JSON.stringify(buildId()),
+    // Accounts show only where the backend is set up: the dev server, or a build with ACCOUNTS=1 (the beta project for now).
+    __ACCOUNTS__: JSON.stringify(command === 'serve' || process.env.ACCOUNTS === '1'),
+  },
   plugins: [
     react(),
     // Dev server only: the ?meeting-map page saves the story's map picture.
@@ -84,6 +90,8 @@ export default defineConfig({
     routeEditorPlugin(),
     // Dev server only: the ?story-sheet page saves its example stories to .cache/story-sheet/.
     saveStorySheet(),
+    // Dev server only: the accounts API (server/handler.ts) under /api/ on a local SQLite database.
+    accountsApi(),
     {
       name: 'beta-title',
       transformIndexHtml: (html) => (isBeta ? html.replaceAll('>AnyoneCanPace<', `>${appName}<`).replace('content="AnyoneCanPace"', `content="${appName}"`) : html),
@@ -116,6 +124,9 @@ export default defineConfig({
         // file (.pmtiles) is not precached: the 6K mode saves it on demand.
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,webp,woff2,pbf}'],
         cleanupOutdatedCaches: true,
+        // The accounts API is never answered with the cached app page: Auth0's return to
+        // /api/auth/callback must reach the server, or sign-in never finishes (spec §5).
+        navigateFallbackDenylist: [/^\/api\//],
       },
     }),
   ],
@@ -142,4 +153,4 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
   },
-});
+}));

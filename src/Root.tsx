@@ -6,6 +6,7 @@ import { ModePicker } from './components/ModePicker';
 import { AppUpdateContext } from './lib/appUpdate';
 import type { AppMode } from './lib/prefs';
 import { sharedRouteId } from './lib/routeLink';
+import { accountReturn } from './account/link';
 import { isSundayLink, withoutSundayParam } from './lib/sundayLink';
 import { SW_OPTIONS, UPDATE_CHECK_MS } from './lib/swUpdate';
 
@@ -13,6 +14,8 @@ import { SW_OPTIONS, UPDATE_CHECK_MS } from './lib/swUpdate';
 // opened, so the timer's first load stays as small as before.
 const loadRoutes = () => import('./sixk/SixKMode');
 const loadDashboard = () => import('./dashboard/DashboardMode');
+// Only in builds with accounts switched on (__ACCOUNTS__), so other builds don't ship it.
+const loadAccount = __ACCOUNTS__ ? () => import('./account/AccountMode') : null;
 
 /**
  * Looks for a new version when the app starts and whenever it comes back into
@@ -61,8 +64,11 @@ function Modes() {
   // A shared route link opens the Route Library on that route, once (SixKMode cleans the address).
   const [openRoute] = useState(() => sharedRouteId(location.search));
   // A Stooopid Sunday link (`?sunday`, src/lib/sundayLink.ts) opens that mode; the address is cleaned so HOME and a reload go to the picker.
+  // Back from Auth0 (`?account…`, src/account/link.ts): the account screen, once (AccountMode cleans the address).
+  const [accountStatus] = useState(() => (__ACCOUNTS__ ? accountReturn(location.search) : null));
   const [mode, setMode] = useState<AppMode | null>(() => {
     if (openRoute) return 'sixk';
+    if (accountStatus !== null) return 'account';
     if (!isSundayLink(location.search)) return null;
     try {
       history.replaceState(history.state, '', withoutSundayParam(location.href));
@@ -73,6 +79,20 @@ function Modes() {
   });
   const toPicker = () => setMode(null);
 
+  if (mode === 'account' && loadAccount) {
+    return (
+      <Lazy
+        load={loadAccount}
+        props={{ onSwitchMode: toPicker, returnStatus: accountStatus }}
+        loading={<p className="loading">Loading your account…</p>}
+        failed={(retry) => (
+          <div className="app">
+            <LoadFailed what="The account screen" onRetry={retry} onBack={toPicker} />
+          </div>
+        )}
+      />
+    );
+  }
   if (mode === 'timer') return <App onSwitchMode={toPicker} />;
   if (mode === 'sixk' || mode === 'dashboard') {
     const routes = mode === 'sixk';

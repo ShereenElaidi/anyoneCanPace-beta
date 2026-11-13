@@ -70,6 +70,13 @@ export function ModePicker({ onPick }: Props) {
           </li>
         </ul>
         <p className="picker__note">You can switch modes later from each mode’s menu.</p>
+        {__ACCOUNTS__ && (
+          // Only here on the home screen: signing in leaves the app for Auth0's page,
+          // so it must never be reachable while a timer or a route is running.
+          <button type="button" className="btn btn--secondary btn--small picker__account" onClick={() => onPick('account')}>
+            YOUR ACCOUNT
+          </button>
+        )}
         <InstallHint />
       </main>
 

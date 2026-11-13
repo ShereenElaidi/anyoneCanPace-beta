@@ -12,6 +12,8 @@ coverage/
 .env
 .env.*
 !.env.example
+# Local accounts API settings (Auth0 secrets): see .dev.vars.example
+.dev.vars
 
 # Logs and temp files
 *.log

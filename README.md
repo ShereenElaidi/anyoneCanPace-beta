@@ -243,11 +243,35 @@ A daily GitHub Action could build a "possible closures" file from this, with the
 
 ## Privacy and offline
 
-- No backend, accounts, cookies, analytics or tracking.
+- No analytics or tracking. **Accounts are being built** (see [Accounts](#accounts-in-development)): they are off on the live site and, until they launch, the live app has no backend, accounts or cookies.
 - **Your GPS position stays on your phone.** It is held in memory for the current route only. It is never stored, logged or sent anywhere, and the map tiles come from the app's own files, not a map service.
 - **The only request the app makes to another site** is the Sunday dashboard's weather request to `api.open-meteo.com`, for **fixed central-Montréal coordinates, never your location**. The request goes straight from your phone to Open-Meteo, so like any web request it shows them ordinary connection details (your IP address, browser and time of the request); your GPS position is never part of it. GPS positions stay on the phone, in memory, for the current route only. It is made only when you open the dashboard and the saved forecast is more than 30 minutes old (or you tap REFRESH). Everything else is the app's own files. Elevation and street-name lookups happen only when a developer runs `npm run routes`, never in the app.
 - After one visit, the timer, routes, stats and map work offline. Anything that can go stale shows when it was saved.
 - Saved on the device: timer settings, the offline map and the last weather forecast.
+
+## Accounts (in development)
+
+Optional accounts so pacers and runners can keep their own routes across devices. The full design is `design/backend-v1-spec.md`; this is step 1 (sign-in, first-time setup, recovery code, settings). **Off on the live site**: the account screen is only in the dev server and in builds made with `ACCOUNTS=1`.
+
+- **Sign-in is Auth0's page**, handled by our server: `/api/auth/login` sends people to Auth0, `/api/auth/callback` comes back, and the server sets its own `HttpOnly` session cookie (`acp_session`, 60 days, renewed when used). No Auth0 code runs in the app. Tested from an installed iPhone app (spec §12).
+- **Server code** is in `server/` (`handler.ts` is the whole API; `db.ts` is the only place with SQL; `auth0.ts` talks to Auth0) and runs as a Cloudflare Pages Function (`functions/api/[[path]].ts`) with a D1 database (`migrations/`). It never ships in the app; `scripts/check-bundle.ts` checks.
+- **What's stored** (D1): username, display name, role, a hash of the recovery code, and one row per signed-in device (a hash of its token and a label like "iPhone · Safari"). Emails and passwords stay at Auth0. Nothing about GPS.
+- **First-time setup** asks for a unique username, a display name and "I'm 14 or older", then shows a recovery code once. The code (3 tries a day per username) gives a one-time password-reset link from Auth0 without email, signs every device out, and is replaced at the next sign-in.
+- **The home screen** has YOUR ACCOUNT; nowhere else does, so signing in (which leaves the app) can't interrupt a timer or a route.
+
+### Running accounts locally
+
+`npm run dev` serves the same API under `/api/` (`scripts/vite/accountsApi.ts`), on a local SQLite file (`.cache/accounts-dev.sqlite`) standing in for D1. It needs `.dev.vars` (git-ignored; copy `.dev.vars.example`) with the settings of a **development** Auth0 tenant, never the live one:
+
+1. Auth0 → Applications → Create Application → **Regular Web Applications**. Allowed Callback URLs `http://localhost:5173/api/auth/callback`, Allowed Logout URLs `http://localhost:5173/anyoneCanPace/`. Its Client ID and Secret go in `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET`.
+2. Auth0 → Applications → Create Application → **Machine to Machine**, authorised for the **Auth0 Management API** with `read:users`, `delete:users` and `create:user_tickets`. Its ID and Secret go in `AUTH0_M2M_CLIENT_ID` / `AUTH0_M2M_CLIENT_SECRET`.
+3. `RECOVERY_PEPPER`: any long random string. `ADMIN_AUTH0_ID`: your own Auth0 user ID, once you've signed up (optional).
+
+Without `.dev.vars` the account screen says accounts aren't available; the rest of the app is unaffected. Deleting `.cache/accounts-dev.sqlite` starts over.
+
+### On Cloudflare (not done yet)
+
+Each Pages project (beta first) needs a D1 database bound as `DB` (migrations applied with `wrangler d1 migrations apply`), the settings above as environment variables (secrets encrypted), `APP_BASE=/`, and `ACCOUNTS=1` in its build variables. Live and beta use separate Auth0 tenants and databases.
 
 ## Tech stack
 

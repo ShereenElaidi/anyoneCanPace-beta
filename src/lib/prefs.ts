@@ -40,7 +40,7 @@ export function savePrefs(prefs: Prefs): void {
 // ---------- App mode ----------
 
 /** The modes on the picker. The app always opens on the picker; no mode is remembered. */
-export type AppMode = 'timer' | 'sixk' | 'dashboard';
+export type AppMode = 'timer' | 'sixk' | 'dashboard' | 'account';
 
 // ---------- Route Library pace ----------
 
