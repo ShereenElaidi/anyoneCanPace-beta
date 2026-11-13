@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Draft } from '../myRoutes/build';
 import { draftStore } from '../myRoutes/drafts';
+import { clearMyRoutesCopies } from '../myRoutes/load';
 import { UpdateBanner } from '../components/UpdateBanner';
 import {
   ApiError,
@@ -574,7 +575,7 @@ function SignOutButton({ label = 'SIGN OUT' }: { label?: string }) {
           signOut()
             // Unsaved routes stay on a device only while its person is signed in.
             .then(async ({ logoutUrl }) => {
-              await draftStore().clear();
+              await Promise.all([draftStore().clear(), clearMyRoutesCopies()]);
               location.assign(logoutUrl);
             })
             .catch((err) => setError(errorText(err)))
@@ -615,7 +616,7 @@ function DeleteSection({ username }: { username: string }) {
           confirm.tap(() =>
             deleteAccount(typed)
               .then(async ({ logoutUrl }) => {
-                await draftStore().clear();
+                await Promise.all([draftStore().clear(), clearMyRoutesCopies()]);
                 location.assign(logoutUrl);
               })
               .catch((err) => setError(errorText(err))),
@@ -651,7 +652,7 @@ function MyRoutesSection({ onAdd }: { onAdd: (draft: Draft | null) => void }) {
       <h2 id="acct-routes-title" className="acct__h2">
         My routes
       </h2>
-      <p className="acct-small">Routes only you can see, on all your devices. Following them from the Route Library is coming next.</p>
+      <p className="acct-small">Routes only you can see, on all your devices. Follow them from the Route Library (My routes).</p>
       {error && (
         <p className="acct-error" role="alert">
           {error}

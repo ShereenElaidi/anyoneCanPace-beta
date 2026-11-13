@@ -980,3 +980,34 @@
 .lib-settings__testing {
   margin-top: 12px;
 }
+
+/* All routes / My routes (accounts) */
+.lib-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.lib-tabs__tab {
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: var(--line) solid var(--asphalt);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--navy);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lib-tabs__tab[aria-pressed='true'] {
+  background: var(--navy);
+  color: var(--white);
+}
+
+.route-page__private {
+  margin: 8px 0 0;
+  font-weight: 700;
+  color: var(--navy);
+}

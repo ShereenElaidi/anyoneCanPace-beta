@@ -523,6 +523,13 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
      cleared on sign-out and account deletion. Tried in the browser with the
      real GeoGratis and Overpass through the local API: Pi Day built, saved and
      listed.
+     **2d built 2026-11-12**: the Route Library shows "All routes / My routes"
+     when signed in (`src/myRoutes/MyRoutesList.tsx`); a personal route opens,
+     shows "Your route: only you can see it", has no SHARE and never puts its ID
+     in the address, and is followed like any route. Opened routes and the list
+     are copied to Cache Storage (`src/myRoutes/load.ts`) for offline use and
+     deleted on sign-out and account deletion. Only builds with accounts carry
+     this code.
    - **Beta set up 2026-11-12:** D1 `anyonecanpace-beta` (tables from
      `migrations/0001_accounts.sql`, recorded in `d1_migrations`), Pages project
      settings and `DB` binding, `feature/accounts` deployed. R2 not needed until

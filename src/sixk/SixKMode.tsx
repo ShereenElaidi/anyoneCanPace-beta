@@ -9,9 +9,16 @@ import { Library } from './Library';
 import { GearIcon } from '../components/GearIcon';
 import { LibrarySettings } from './LibrarySettings';
 import { RoutePage } from './RoutePage';
+import { getMe } from '../account/api';
+import { MyRoutesList } from '../myRoutes/MyRoutesList';
+import type { MyRoutesList as MyList } from '../myRoutes/load';
+
+// Personal routes load their code only in builds with accounts (__ACCOUNTS__), so other builds don't ship it.
+const myRoutes = () => import('../myRoutes/load');
 import './sixk.css';
 
-type View = { name: 'library' } | { name: 'route'; id: string } | { name: 'follow'; id: string };
+/** `mine`: one of the signed-in person's own routes (never in the address or a share link). */
+type View = { name: 'library' } | { name: 'route'; id: string; mine?: boolean } | { name: 'follow'; id: string; mine?: boolean };
 
 interface Props {
   onSwitchMode: () => void;
@@ -25,7 +32,8 @@ const routeIds = manifest.routes.map((r) => r.id);
  * The address for a screen: a route (its page or following it) shows `?route=<id>`,
  * so it can be copied from the address bar and a reload reopens it; the library doesn't.
  */
-const addressFor = (view: View) => (view.name === 'library' ? withoutRouteParam(location.href) : withRouteParam(location.href, view.id));
+const addressFor = (view: View) =>
+  view.name === 'library' || view.mine ? withoutRouteParam(location.href) : withRouteParam(location.href, view.id);
 
 /**
  * 6K Route Library mode: library → route page → follow view.
@@ -53,6 +61,20 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
     saveRouteSort(s);
   }, []);
   const [filter, setFilter] = useState<RouteFilter>('all');
+  // My routes (accounts only): the list, once known; which list the library shows.
+  const [myList, setMyList] = useState<MyList | null>(null);
+  const [tab, setTab] = useState<'all' | 'mine'>('all');
+  useEffect(() => {
+    if (!__ACCOUNTS__) return;
+    let cancelled = false;
+    void getMe()
+      .then((me) => (me.state === 'ready' || me.state === 'offline' ? myRoutes().then((m) => m.loadMyRoutesList()) : null))
+      .then((list) => !cancelled && setMyList(list))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Routes tagged "Testing" stay hidden unless turned on, also for this visit only.
   const [showTesting, setShowTesting] = useState(false);
   const changeShowTesting = useCallback((show: boolean) => {
@@ -92,18 +114,19 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
   }, [openRoute, linkedRoute]);
 
   const id = view.name === 'library' ? null : view.id;
+  const mine = view.name !== 'library' && !!view.mine;
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
     setError(null);
-    loadRoute(id).then(
+    (__ACCOUNTS__ && mine ? myRoutes().then((m) => m.loadMyRoute(id)) : loadRoute(id)).then(
       (r) => !cancelled && setRoute(r),
       (e: unknown) => !cancelled && setError(e instanceof Error ? e.message : 'Could not load the route'),
     );
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, mine]);
 
   const go = useCallback((next: View) => {
     try {
@@ -131,11 +154,16 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
   }, []);
 
   const loaded = route && id && route.data.id === id ? route : null;
-  const title = view.name === 'library' ? 'Route Library' : (manifest.routes.find((r) => r.id === id)?.name ?? 'Route');
+  const title =
+    view.name === 'library'
+      ? 'Route Library'
+      : mine
+        ? (loaded?.data.name ?? myList?.routes.find((r) => r.id === id)?.name ?? 'Route')
+        : (manifest.routes.find((r) => r.id === id)?.name ?? 'Route');
 
   if (view.name === 'follow') {
     if (!loaded) return <p className="loading">{error ?? 'Loading route…'}</p>;
-    return <FollowView key={loaded.data.id} route={loaded} menuRequest={menuRequest} onExit={() => go({ name: 'route', id: loaded.data.id })} />;
+    return <FollowView key={loaded.data.id} route={loaded} menuRequest={menuRequest} onExit={() => go({ name: 'route', id: loaded.data.id, mine })} />;
   }
 
   return (
@@ -170,6 +198,19 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
                 The shared route isn’t in this version of the app. It may have been renamed or removed: pick one below.
               </p>
             )}
+            {__ACCOUNTS__ && myList && (
+              <div className="lib-tabs" role="group" aria-label="Which routes">
+                <button type="button" className="lib-tabs__tab" aria-pressed={tab === 'all'} onClick={() => setTab('all')}>
+                  All routes
+                </button>
+                <button type="button" className="lib-tabs__tab" aria-pressed={tab === 'mine'} onClick={() => setTab('mine')}>
+                  My routes ({myList.routes.length})
+                </button>
+              </div>
+            )}
+            {__ACCOUNTS__ && myList && tab === 'mine' ? (
+              <MyRoutesList list={myList} pace={pace} onOpen={(routeId) => go({ name: 'route', id: routeId, mine: true })} />
+            ) : (
             <Library
               onOpen={(routeId) => go({ name: 'route', id: routeId })}
               pace={pace}
@@ -179,6 +220,7 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
               showTesting={showTesting}
               onShowTesting={changeShowTesting}
             />
+            )}
             <LibrarySettings
               open={settingsOpen}
               onClose={() => setSettingsOpen(false)}
@@ -196,7 +238,7 @@ export default function SixKMode({ onSwitchMode, openRoute }: Props) {
         )}
         {view.name === 'route' &&
           (loaded ? (
-            <RoutePage route={loaded} onStart={() => go({ name: 'follow', id: loaded.data.id })} />
+            <RoutePage route={loaded} personal={mine} onStart={() => go({ name: 'follow', id: loaded.data.id, mine })} />
           ) : (
             <p className="loading">{error ?? 'Loading route…'}</p>
           ))}

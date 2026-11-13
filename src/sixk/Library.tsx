@@ -92,7 +92,7 @@ export function Library({ onOpen, pace, sort, filter, onFilter, showTesting, onS
   );
 }
 
-function RouteCard({ route, pace, onOpen }: { route: RouteSummary; pace: number; onOpen: () => void }) {
+export function RouteCard({ route, pace, onOpen }: { route: RouteSummary; pace: number; onOpen: () => void }) {
   const { distanceM } = route.stats;
   const time = estimateTime(distanceM, pace);
   const tags = (route.tags ?? []).filter((t) => t in ROUTE_TAGS);

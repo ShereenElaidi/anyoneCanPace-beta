@@ -16,9 +16,11 @@ const loadRouteMap = () => import('./map/RouteMap');
 interface Props {
   route: LoadedRoute;
   onStart: () => void;
+  /** One of the signed-in person's own routes: private, so no share link (spec §3). */
+  personal?: boolean;
 }
 
-export function RoutePage({ route, onStart }: Props) {
+export function RoutePage({ route, onStart, personal = false }: Props) {
   const { data, track } = route;
   const file = advisoriesFile as NoticeFile;
   const sharing = useShareRoute(data);
@@ -42,12 +44,14 @@ export function RoutePage({ route, onStart }: Props) {
             <dd>↓ {data.stats.lossM} m</dd>
           </div>
         </dl>
-        <button type="button" className="btn route-stats__share" aria-label="Share route" onClick={() => void sharing.share()}>
-          <ShareIcon />
-          SHARE
-        </button>
+        {!personal && (
+          <button type="button" className="btn route-stats__share" aria-label="Share route" onClick={() => void sharing.share()}>
+            <ShareIcon />
+            SHARE
+          </button>
+        )}
       </div>
-      <ShareFallback state={sharing.state} url={sharing.url} />
+      {personal ? <p className="route-page__private">Your route: only you can see it.</p> : <ShareFallback state={sharing.state} url={sharing.url} />}
 
       <div className="route-page__map">
         <Lazy
