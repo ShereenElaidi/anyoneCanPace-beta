@@ -15,15 +15,15 @@ const edited: Turn[] = [{ atM: 500, dir: 'left', street: 'Rue Hand-Fixed', note:
 const proposedNew: Turn[] = [{ atM: 600, dir: 'left', street: 'Rue Suggested' }];
 
 describe('turn positions after geometry changes', () => {
-  it('fingerprints are stable and change with the geometry', () => {
-    expect(geometryFingerprint(oldCoords)).toBe(geometryFingerprint([...oldCoords]));
-    expect(geometryFingerprint(newCoords)).not.toBe(geometryFingerprint(oldCoords));
+  it('fingerprints are stable and change with the geometry', async () => {
+    expect(await geometryFingerprint(oldCoords)).toBe(await geometryFingerprint([...oldCoords]));
+    expect(await geometryFingerprint(newCoords)).not.toBe(await geometryFingerprint(oldCoords));
   });
 
-  it('unchanged rebuild: hand-edited turns (with their manual street and note) are kept as they are', () => {
-    const d = decideTurns({
+  it('unchanged rebuild: hand-edited turns (with their manual street and note) are kept as they are', async () => {
+    const d = await decideTurns({
       existingTurns: edited,
-      existingFingerprint: geometryFingerprint(oldCoords),
+      existingFingerprint: await geometryFingerprint(oldCoords),
       oldCoords,
       newCoords: oldCoords,
       proposed: [{ atM: 500, dir: 'left', street: 'Rue Suggested' }],
@@ -34,10 +34,10 @@ describe('turn positions after geometry changes', () => {
     expect(d.geometryChanged).toBe(false);
   });
 
-  it('changed geometry: the old distances are not silently reused', () => {
-    const d = decideTurns({
+  it('changed geometry: the old distances are not silently reused', async () => {
+    const d = await decideTurns({
       existingTurns: edited,
-      existingFingerprint: geometryFingerprint(oldCoords),
+      existingFingerprint: await geometryFingerprint(oldCoords),
       oldCoords,
       newCoords,
       proposed: proposedNew,
@@ -47,15 +47,15 @@ describe('turn positions after geometry changes', () => {
     expect(d.geometryChanged).toBe(true);
   });
 
-  it('no record of the old geometry at all: treated as stale too', () => {
-    const d = decideTurns({ existingTurns: edited, oldCoords: null, newCoords, proposed: proposedNew, reset: false });
+  it('no record of the old geometry at all: treated as stale too', async () => {
+    const d = await decideTurns({ existingTurns: edited, oldCoords: null, newCoords, proposed: proposedNew, reset: false });
     expect(d.outcome).toBe('stale');
   });
 
-  it('reset after a change: fresh distances, with the manual street and note carried over by position', () => {
-    const d = decideTurns({
+  it('reset after a change: fresh distances, with the manual street and note carried over by position', async () => {
+    const d = await decideTurns({
       existingTurns: edited,
-      existingFingerprint: geometryFingerprint(oldCoords),
+      existingFingerprint: await geometryFingerprint(oldCoords),
       oldCoords,
       newCoords,
       proposed: proposedNew,
@@ -67,10 +67,10 @@ describe('turn positions after geometry changes', () => {
     expect(d.dropped).toEqual([]);
   });
 
-  it('reset: an old edited turn with no new turn at its place is reported, not attached somewhere else', () => {
-    const d = decideTurns({
+  it('reset: an old edited turn with no new turn at its place is reported, not attached somewhere else', async () => {
+    const d = await decideTurns({
       existingTurns: [...edited, { atM: 800, dir: 'right', street: 'Rue Gone', note: 'Watch the gravel' }],
-      existingFingerprint: geometryFingerprint(oldCoords),
+      existingFingerprint: await geometryFingerprint(oldCoords),
       oldCoords,
       newCoords,
       proposed: proposedNew,
@@ -80,13 +80,13 @@ describe('turn positions after geometry changes', () => {
     expect(d.dropped.map((t) => t.street)).toEqual(['Rue Gone']);
   });
 
-  it('first build: the proposals are used', () => {
-    const d = decideTurns({ existingTurns: null, oldCoords: null, newCoords, proposed: proposedNew, reset: false });
+  it('first build: the proposals are used', async () => {
+    const d = await decideTurns({ existingTurns: null, oldCoords: null, newCoords, proposed: proposedNew, reset: false });
     expect(d.outcome).toBe('proposed');
     expect(d.turns).toBe(proposedNew);
   });
 
-  it('positionAt walks along the line', () => {
+  it('positionAt walks along the line', async () => {
     const p = positionAt(oldCoords, 750);
     expect(p[0]).toBeCloseTo(at(500, 250)[0], 5);
     expect(p[1]).toBeCloseTo(at(500, 250)[1], 4);

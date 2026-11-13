@@ -509,21 +509,24 @@ describe('lookups for building a route', () => {
     expect((await b.post('/api/lookup/elevation', { points: [['45; drop', -73]] })).status).toBe(400);
   });
 
-  it('asks Overpass only for named streets within 40 m of the route line', async () => {
+  it('asks Overpass for named streets in the route’s area, the same query as npm run routes', async () => {
     const { b } = await signedUp('auth0|sam', 'sam_runs');
-    const res = await b.post('/api/lookup/streets', { line: [[45.51, -73.57], [45.52, -73.56]] });
+    const res = await b.post('/api/lookup/streets', { box: [-73.57, 45.51, -73.56, 45.52] });
     expect(res.status).toBe(200);
-    expect(auth0.lookups[0]).toContain('way["highway"]["name"](around:40,45.51,-73.57,45.52,-73.56);out geom;');
+    expect(auth0.lookups[0]).toContain('way["highway"]["name"](45.51,-73.57,45.52,-73.56);out geom;');
+    expect((await b.post('/api/lookup/streets', { box: [-74, 45, -73, 46] })).status).toBe(400); // too big an area
+    expect((await b.post('/api/lookup/streets', { box: [-73.56, 45.51, -73.57, 45.52] })).status).toBe(400); // west of east
   });
 
   it('needs a finished account, and stops after the daily limit', async () => {
-    expect((await browser().post('/api/lookup/streets', { line: [[45, -73], [45.1, -73]] })).status).toBe(401);
+    const box = [-73.57, 45.51, -73.56, 45.52];
+    expect((await browser().post('/api/lookup/streets', { box })).status).toBe(401);
     const half = browser();
     await half.signIn('auth0|new');
-    expect((await half.post('/api/lookup/streets', { line: [[45, -73], [45.1, -73]] })).status).toBe(403);
+    expect((await half.post('/api/lookup/streets', { box })).status).toBe(403);
 
     const { b } = await signedUp('auth0|sam', 'sam_runs');
-    for (let i = 0; i < LOOKUPS_PER_DAY.streets; i++) await b.post('/api/lookup/streets', { line: [[45, -73], [45.1, -73]] });
-    expect((await b.post('/api/lookup/streets', { line: [[45, -73], [45.1, -73]] })).status).toBe(429);
+    for (let i = 0; i < LOOKUPS_PER_DAY.streets; i++) await b.post('/api/lookup/streets', { box });
+    expect((await b.post('/api/lookup/streets', { box })).status).toBe(429);
   });
 });

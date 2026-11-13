@@ -14,10 +14,12 @@ export const CDEM_PROFILE_API = 'https://geogratis.gc.ca/services/elevation/cdem
 export const OVERPASS_API = 'https://overpass-api.de/api/interpreter';
 /** Points per elevation request (GeoGratis profile, as build-routes.ts sends them). */
 export const ELEVATION_BATCH = 100;
-/** Points of the (simplified) route line sent for street names. */
-export const STREETS_MAX_POINTS = 1000;
-/** Streets within this distance of the route line (build-routes.ts keeps those within 40 m). */
-export const STREETS_RADIUS_M = 40;
+/**
+ * Largest area (degrees, each side) for street names: a 50 km route fits
+ * easily. Asked by area, exactly as `npm run routes` does: a query along the
+ * route line is much heavier for the public Overpass server and often fails.
+ */
+export const STREETS_MAX_SPAN_DEG = 0.6;
 
 type LatLon = [number, number];
 
@@ -44,12 +46,14 @@ export function elevationRequest(points: unknown): string | null {
   return `${CDEM_PROFILE_API}?path=${encodeURIComponent(wkt)}&steps=0`;
 }
 
-/** The Overpass query for named streets near the route line, or null if the line isn't valid. */
-export function streetsQuery(line: unknown): string | null {
-  const pts = latLons(line, 2, STREETS_MAX_POINTS);
-  if (!pts) return null;
-  const around = pts.map(([lat, lon]) => `${lat},${lon}`).join(',');
-  return `[out:json][timeout:60];way["highway"]["name"](around:${STREETS_RADIUS_M},${around});out geom;`;
+/** The Overpass query for named streets in a [west, south, east, north] box, or null if the box isn't valid. */
+export function streetsQuery(box: unknown): string | null {
+  if (!Array.isArray(box) || box.length !== 4 || !box.every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
+  const [w, s, e, n] = (box as number[]).map((v) => Math.round(v * 1e4) / 1e4);
+  if (Math.abs(s) > 90 || Math.abs(n) > 90 || Math.abs(w) > 180 || Math.abs(e) > 180) return null;
+  if (e <= w || n <= s || e - w > STREETS_MAX_SPAN_DEG || n - s > STREETS_MAX_SPAN_DEG) return null;
+  // Same query as scripts/build-routes.ts.
+  return `[out:json][timeout:60];way["highway"]["name"](${s},${w},${n},${e});out geom;`;
 }
 
 /** Passes the outside service's answer through, unparsed. */

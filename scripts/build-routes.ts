@@ -21,30 +21,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { RouteData, RouteManifest, RouteSource, RouteVerification, TrackFeature, Turn } from '../src/nav/types.ts';
-import {
-  COPERNICUS_GLO90,
-  GPX_ELEVATION,
-  NRCAN_CDEM,
-  processElevation,
-  type ElevationResult,
-  type ElevationSource,
-} from './lib/elevation.ts';
-import {
-  bbox,
-  classify,
-  cumulative,
-  dedupe,
-  distanceToLine,
-  outlinePath,
-  parseGpx,
-  removeSpurs,
-  resample,
-  simplify,
-} from './lib/process-route.ts';
+import type { RouteData, RouteManifest, RouteSource, TrackFeature, Turn } from '../src/nav/types.ts';
+import { buildRoute as buildRouteData, elevationsFromProfile, overpassFailure, streetsBox, streetsFromOverpass } from './lib/build-route.ts';
+import { COPERNICUS_GLO90, processElevation, type ElevationResult, type ElevationSource } from './lib/elevation.ts';
 import { formatJson } from './lib/json.ts';
-import { analyseTurns, turnReviewMarkdown, type Street, type TurnAnalysis } from './lib/turns.ts';
-import { decideTurns, type TurnDecision } from './lib/turn-review.ts';
+import { turnReviewMarkdown, type Street, type TurnAnalysis } from './lib/turns.ts';
+import type { TurnDecision } from './lib/turn-review.ts';
 
 interface RouteConfig {
   id: string;
@@ -66,7 +48,6 @@ const RESET_TURNS = process.argv.includes('--reset-turns');
 const CDEM_PROFILE_API = 'https://geogratis.gc.ca/services/elevation/cdem/profile';
 const OVERPASS_API = 'https://overpass-api.de/api/interpreter';
 
-const round = (v: number, digits: number) => Math.round(v * 10 ** digits) / 10 ** digits;
 
 function readJson<T>(path: string): T | null {
   return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as T) : null;
@@ -101,13 +82,7 @@ async function lookupElevations(id: string, coords: [number, number][]): Promise
     const url = `${CDEM_PROFILE_API}?path=${encodeURIComponent(wkt)}&steps=0`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Elevation lookup failed: ${res.status} ${await res.text()}`);
-    const body = (await res.json()) as { altitude: number | null; vertex: boolean }[];
-    const vertices = body.filter((p) => p.vertex);
-    if (vertices.length !== line.length) throw new Error(`Elevation lookup returned ${vertices.length} points for ${line.length}`);
-    // No-data comes back as null or a large negative fill value.
-    elevations.push(
-      ...vertices.slice(0, batch.length).map((p) => (typeof p.altitude === 'number' && p.altitude > -500 ? p.altitude : null)),
-    );
+    elevations.push(...elevationsFromProfile(await res.json(), batch.length));
   }
   const cache: ElevationCache = { source: CDEM_CACHE_SOURCE, coords, elevations };
   writeFileSync(path, formatJson(cache));
@@ -132,13 +107,7 @@ interface StreetCache {
 
 async function lookupStreets(id: string, box: [number, number, number, number], track: { lat: number; lon: number }[]): Promise<Street[]> {
   const path = join(CACHE_DIR, `${id}.streets.json`);
-  const pad = 0.002;
-  const padded: [number, number, number, number] = [
-    round(box[0] - pad, 4),
-    round(box[1] - pad, 4),
-    round(box[2] + pad, 4),
-    round(box[3] + pad, 4),
-  ];
+  const padded = streetsBox(box);
   const cached = readJson<StreetCache>(path);
   if (cached && JSON.stringify(cached.bbox) === JSON.stringify(padded)) return cached.streets;
   if (OFFLINE) {
@@ -156,18 +125,14 @@ async function lookupStreets(id: string, box: [number, number, number, number], 
     console.warn(`  ! Street lookup failed (${res.status}); turns will have empty street names.`);
     return [];
   }
-  const body = (await res.json()) as {
-    elements: { tags?: { name?: string }; geometry?: { lat: number; lon: number }[] }[];
-  };
-  // Keep only streets that come close to the route, to keep the cache small.
-  const streets: Street[] = [];
-  for (const el of body.elements) {
-    const name = el.tags?.name;
-    const geom = el.geometry;
-    if (!name || !geom || geom.length < 2) continue;
-    if (!geom.some((p) => distanceToLine(p, track) < 40)) continue;
-    streets.push({ name, coords: geom.map((p) => [round(p.lon, 6), round(p.lat, 6)]) });
+  const body = await res.json();
+  const failure = overpassFailure(body);
+  if (failure) {
+    console.warn(`  ! Street lookup failed (${failure}); turns will have empty street names.`);
+    return [];
   }
+  // Keep only streets that come close to the route, to keep the cache small.
+  const streets = streetsFromOverpass(body, track);
   const cache: StreetCache = {
     source: 'OpenStreetMap contributors (ODbL), via the Overpass API',
     bbox: padded,
@@ -181,138 +146,33 @@ async function lookupStreets(id: string, box: [number, number, number, number], 
 
 async function buildRoute(config: RouteConfig) {
   console.log(`\n${config.id}  (${config.gpx})`);
-  const gpx = parseGpx(readFileSync(join(SRC_DIR, config.gpx), 'utf8'));
-  if (gpx.points.length < 2) throw new Error(`${config.gpx} has no track points`);
-
-  const deduped = dedupe(gpx.points);
-  const spurs = removeSpurs(deduped);
-  const cleaned = dedupe(spurs.points);
-  const track = simplify(cleaned);
-  const cum = cumulative(track);
-  const total = cum[cum.length - 1];
-  const kind = classify(track, cum);
-  const box = bbox(track);
-
-  console.log(`  points: ${gpx.points.length} → ${deduped.length} deduped → ${cleaned.length} without spurs → ${track.length} simplified`);
-  for (const s of spurs.removed) console.log(`  removed spur: input points ${s.from}–${s.to} (${s.pathM.toFixed(1)} m out and back)`);
-  console.log(`  distance: ${total.toFixed(0)} m, ${kind}`);
-
-  // Elevation: from the GPX if every point has it, otherwise looked up.
-  const fromGpx = gpx.points.every((p) => p.ele !== undefined);
-  const eleSource: ElevationSource = fromGpx ? GPX_ELEVATION : NRCAN_CDEM;
-  const samples = resample(track, cum, eleSource.sampleStepM);
-  let elevations: (number | null)[];
-  if (fromGpx) {
-    const denseCum = cumulative(cleaned);
-    elevations = samples.map((s) => {
-      let best = 0;
-      let bestD = Infinity;
-      cleaned.forEach((_, i) => {
-        const d = Math.abs(denseCum[i] - s.d);
-        if (d < bestD) {
-          bestD = d;
-          best = i;
-        }
-      });
-      return cleaned[best].ele ?? null;
-    });
-  } else {
-    elevations = await lookupElevations(
-      config.id,
-      samples.map((s) => [round(s.p.lat, 5), round(s.p.lon, 5)]),
-    );
-  }
-  const eleResult = processElevation(samples.map((s, i) => ({ d: s.d, ele: elevations[i] })), eleSource);
-  const ele = eleResult.summary;
-  if (!ele) throw new Error(`${config.id}: no elevation data along the route`);
-  console.log(`  elevation (${eleSource.name}): +${ele.gainM} m / -${ele.lossM} m, ${ele.minEleM}–${ele.maxEleM} m`);
-  if (eleResult.missingM) console.warn(`  ! ${eleResult.missingM} m of the route had no elevation; bridged with straight lines`);
-  if (eleResult.spikes.length) console.log(`  elevation spikes replaced: ${eleResult.spikes.length}`);
-
-  const streets = await lookupStreets(config.id, box, track);
-  const analysis = analyseTurns(track, cum, streets);
+  const jsonPath = join(OUT_DIR, `${config.id}.json`);
+  // The steps themselves are shared with the app (scripts/lib/build-route.ts).
+  const built = await buildRouteData(
+    {
+      id: config.id,
+      name: config.name,
+      gpx: readFileSync(join(SRC_DIR, config.gpx), 'utf8'),
+      gpxLabel: config.gpx,
+      source: config.source,
+      existing: readJson<RouteData>(jsonPath),
+      oldTrack: readJson<TrackFeature>(join(OUT_DIR, `${config.id}.geojson`)),
+      resetTurns: RESET_TURNS,
+    },
+    {
+      elevations: (coords) => lookupElevations(config.id, coords),
+      streets: (box, track) => lookupStreets(config.id, box, track),
+    },
+    (level, text) => console[level](text),
+  );
+  const { data, feature, analysis, eleSource, eleResult, decision } = built;
   const proposed: Turn[] = analysis.turns.map((t) => ({ atM: t.atM, dir: t.dir, street: t.street }));
   writeFileSync(join(CACHE_DIR, `${config.id}.proposed-turns.json`), formatJson(proposed));
-  const flagged = analysis.review.filter((r) => r.needsReview).length;
-  console.log(`  proposed turns: ${proposed.length}, ${flagged} candidate(s) need review (see routes/review/${config.id}.md)`);
-
-  const jsonPath = join(OUT_DIR, `${config.id}.json`);
-  const existing = readJson<RouteData>(jsonPath);
-  const oldTrack = readJson<TrackFeature>(join(OUT_DIR, `${config.id}.geojson`));
-  const coords = track.map((p) => [round(p.lon, 6), round(p.lat, 6)] as [number, number]);
-  const decision = decideTurns({
-    existingTurns: existing?.turns ?? null,
-    existingFingerprint: existing?.geometry,
-    oldCoords: oldTrack?.geometry.coordinates ?? null,
-    newCoords: coords,
-    proposed,
-    reset: RESET_TURNS,
-  });
-  if (decision.outcome === 'stale') {
-    throw new Error(
-      `${config.id}: the track geometry changed since its turns were written, so their distances (atM) no longer ` +
-        `match the route. Rebuild with --reset-turns to regenerate them (street names and notes are carried over to ` +
-        `turns within 25 m), then review routes/review/${config.id}.md.`,
-    );
-  }
-  const keep = !!existing;
-  if (decision.outcome === 'kept') console.log('  geometry unchanged: kept hand-edited turns');
-  if (decision.outcome === 'regenerated') {
-    console.log(`  turns regenerated; ${decision.carried} street/note edit(s) carried over by position`);
-    for (const t of decision.dropped) console.warn(`  ! old turn at ${(t.atM / 1000).toFixed(2)} km (${t.street || t.dir}) matched no new turn: check it`);
-  }
-  if (decision.geometryChanged && existing?.advisories.some((a) => a.fromKm !== undefined)) {
-    console.warn('  ! the geometry changed: check the km ranges of this route’s advisories');
-  }
-  // Any change to what the pacer is told means a person has to check it again.
-  const changed = decision.geometryChanged || decision.outcome === 'regenerated';
-  const verification: RouteVerification =
-    existing?.verification && !changed
-      ? existing.verification
-      : {
-          status: 'unverified',
-          ...(existing?.verification && existing.verification.status !== 'unverified'
-            ? { notes: `Was ${existing.verification.status}; geometry or turns changed since, so it needs checking again.` }
-            : {}),
-        };
-
-  const data: RouteData = {
-    id: config.id,
-    name: keep ? existing!.name : config.name,
-    kind,
-    stats: {
-      distanceM: Math.round(total),
-      gainM: ele.gainM,
-      lossM: ele.lossM,
-      minEleM: ele.minEleM,
-      maxEleM: ele.maxEleM,
-    },
-    track: `${config.id}.geojson`,
-    startStreet:
-      keep && !decision.geometryChanged && existing!.startStreet !== undefined ? existing!.startStreet : analysis.startStreet,
-    ...(keep && existing!.place !== undefined ? { place: existing!.place } : {}),
-    ...(keep && existing!.description !== undefined ? { description: existing!.description } : {}),
-    ...(keep && existing!.tags !== undefined ? { tags: existing!.tags } : {}),
-    bbox: box.map((v) => round(v, 6)) as RouteData['bbox'],
-    profile: ele.profile,
-    turns: decision.turns,
-    notes: keep ? existing!.notes : [],
-    advisories: keep ? existing!.advisories : [],
-    source: config.source,
-    verification,
-    geometry: decision.fingerprint,
-  };
-
-  const feature: TrackFeature = {
-    type: 'Feature',
-    properties: { id: config.id, distancesM: cum.map((d) => round(d, 1)) },
-    geometry: { type: 'LineString', coordinates: coords },
-  };
 
   writeFileSync(jsonPath, formatJson(data));
   writeFileSync(join(OUT_DIR, `${config.id}.geojson`), JSON.stringify(feature) + '\n');
   writeReview(config, data, analysis, eleSource, eleResult, decision);
-  return { data, outline: outlinePath(track) };
+  return { data, outline: built.outline };
 }
 
 // ---------- Review report ----------

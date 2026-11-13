@@ -14,7 +14,9 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    // The app shares the route builder with npm run routes (scripts/lib/*.ts, imported with their extension).
+    "allowImportingTsExtensions": true
   },
   "include": ["src"],
   "exclude": ["src/dev/routeEditor/server"]

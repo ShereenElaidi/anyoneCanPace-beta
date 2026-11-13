@@ -410,8 +410,8 @@ export async function handle(request: Request, env: Env, now = Date.now()): Prom
     }
 
     if (path === '/api/lookup/streets' && method === 'POST') {
-      const query = streetsQuery((await readJson(request)).line);
-      if (!query) return problem(400, 'invalid', 'Send the route line as 2 to 1000 [latitude, longitude] points.');
+      const query = streetsQuery((await readJson(request)).box);
+      if (!query) return problem(400, 'invalid', 'Send the area as [west, south, east, north], at most 0.6° each way.');
       if (!(await underDailyLimit(db, env, 'lookup-streets', user.id, LOOKUPS_PER_DAY.streets, now))) {
         return problem(429, 'too-many-lookups', 'That’s enough route building for today. Try again tomorrow.');
       }

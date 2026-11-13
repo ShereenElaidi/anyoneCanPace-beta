@@ -11,7 +11,6 @@
  *   over from old turns at the same place (by position, not distance), and
  *   old turns that matched nothing listed for review.
  */
-import { createHash } from 'node:crypto';
 import type { Turn } from '../../src/nav/types.ts';
 
 type Coord = [number, number]; // [lon, lat]
@@ -19,8 +18,13 @@ type Coord = [number, number]; // [lon, lat]
 /** Old and new turns closer than this (metres, on the ground) are the same turn. */
 export const CARRY_RADIUS_M = 25;
 
-export function geometryFingerprint(coords: Coord[]): string {
-  return createHash('sha256').update(JSON.stringify(coords)).digest('hex').slice(0, 16);
+/**
+ * First 16 hex characters of the SHA-256 of the coordinates' JSON. Web Crypto,
+ * so the same code runs in Node (npm run routes) and on the device.
+ */
+export async function geometryFingerprint(coords: Coord[]): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(coords)));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
 
 const R = 6371000;
@@ -56,7 +60,7 @@ export interface TurnDecision {
   dropped: Turn[];
 }
 
-export function decideTurns(o: {
+export async function decideTurns(o: {
   existingTurns: Turn[] | null;
   /** Fingerprint saved with the existing route, if any. */
   existingFingerprint?: string;
@@ -65,9 +69,9 @@ export function decideTurns(o: {
   newCoords: Coord[];
   proposed: Turn[];
   reset: boolean;
-}): TurnDecision {
-  const fingerprint = geometryFingerprint(o.newCoords);
-  const before = o.existingFingerprint ?? (o.oldCoords ? geometryFingerprint(o.oldCoords) : null);
+}): Promise<TurnDecision> {
+  const fingerprint = await geometryFingerprint(o.newCoords);
+  const before = o.existingFingerprint ?? (o.oldCoords ? await geometryFingerprint(o.oldCoords) : null);
   const geometryChanged = before !== null && before !== fingerprint;
   const base = { fingerprint, geometryChanged, carried: 0, dropped: [] as Turn[] };
 

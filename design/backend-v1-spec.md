@@ -174,26 +174,41 @@ the current library routes plus 1.1 km (the whole island would be ~55 MB).
 - Before saving, the page reminds people that a GPX usually starts at home and
   offers to trim the first and last few hundred metres. For public uploads the
   reminder is a required checkbox. **[assumed]**
-- **Where the build runs [approved]:** in the **browser** (a Web
-  Worker), not in one Function request. Cloudflare's free plan gives each request
+- **Where the build runs [approved]:** in the **browser**, not in one
+  Function request. (On the main thread: measured at 45–60 ms of computing on a
+  laptop for 7–12 km routes, so no Web Worker for now.) Cloudflare's free plan gives each request
   10 ms of CPU and 50 outside requests. Elevation is sampled every 10 m and
   looked up 100 points per request, so a 50 km route needs about 50 GeoGratis
   calls plus Overpass, and the route and turn maths on thousands of points would
   likely go over 10 ms.
-  - The build code is already pure TypeScript (`process-route.ts`, `turns.ts`,
-    `sanitize-gpx.ts`), so it can run on the device.
+  - **One pipeline (2b, built 2026-11-12):** `scripts/lib/build-route.ts` holds
+    the build steps for both `npm run routes` and the app (`src/myRoutes/build.ts`).
+    `npm run routes` output was checked byte for byte unchanged (with and without
+    `--reset-turns`); the geometry fingerprint now uses Web Crypto (same values).
+    Pi Day built the device way with the real GeoGratis and Overpass gives the
+    same distance, elevation, start street and turns as the repo (≈36 s, mostly
+    waiting on the services).
   - Elevation and street names go through two small Functions,
     `POST /api/lookup/elevation` (one batch of 100 points) and
     `POST /api/lookup/streets`, so GeoGratis and Overpass see our server, not the
     person's phone. Each call is one outside request and very little CPU.
     Signed-in only, rate-limited, no storage.
+  - Street names are asked for **by area** (the route's box plus ~200 m, at most
+    0.6° each way), the same query as `npm run routes`: a query along the route
+    line was too heavy for the public Overpass server and came back empty. The
+    larger answer is passed through unparsed, so the server's CPU stays low.
+  - The public services are often busy: the device retries after 2, 5 and 12 s.
+    An Overpass answer with an error remark counts as a failure (the script now
+    doesn't cache it either). If street names still fail, the route is built
+    without them and the draft says so (`streetsMissing`), to fill in while
+    checking the turns. Elevation failing stops the build with a message.
+  - Unsaved drafts are kept on the device in IndexedDB (`src/myRoutes/drafts.ts`;
+    in memory where IndexedDB is unavailable) and cleared on sign-out.
   - The server stores the result after cheap checks: schema, field rules, sizes,
     distance and point count within limits, track and route agreeing, cleaned
     GPX containing only lat/lon/ele, and (public) inside the map area. That's
     safe because a person can only harm their own personal library this way, and
     public uploads come from pacers you promoted.
-- `turn-review.ts` uses `node:crypto`; switch it to Web Crypto so it runs in the
-  browser. **[assumed]**
 - A route's GPX can't be replaced after saving; upload it as a new route. This
   replaces the "geometry change needs `--reset-turns`" step. **[assumed]**
 - The route editor becomes a real, lazy-loaded part of the app. `check-bundle.ts`
@@ -498,6 +513,7 @@ Reports: 20 per account per day. Lookups: enough for a few builds a day
      build module for the app and `npm run routes`), 2c add-a-route screens,
      2d my routes in the library + offline + beta deploy, 2e Québec map on R2.
      **2a built 2026-11-12** (`server/routes.ts`, `server/lookups.ts`).
+     **2b built 2026-11-12** (`scripts/lib/build-route.ts`, `src/myRoutes/`).
    - **Beta set up 2026-11-12:** D1 `anyonecanpace-beta` (tables from
      `migrations/0001_accounts.sql`, recorded in `d1_migrations`), Pages project
      settings and `DB` binding, `feature/accounts` deployed. R2 not needed until
